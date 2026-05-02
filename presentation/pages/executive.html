@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Executive Summary — Vescavia Gyanverse</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <a class="brand" href="../index.html">Vescavia</a>
+    <nav class="main-nav">
+      <a href="../index.html">Overview</a>
+      <a href="executive.html" class="active">Executive Summary</a>
+      <a href="features.html">Features</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="multitenancy.html">Multi-Tenancy</a>
+      <a href="system.html">System &amp; Tech</a>
+      <a href="../index.html#contact">Contact</a>
+    </nav>
+  </header>
+
+  <main class="page-wrap">
+    <div class="bento">
+
+      <!-- Platform overview -->
+      <div class="tile tile--2 tile--hero">
+        <div class="eyebrow">Executive Summary</div>
+        <h1>Gyanverse</h1>
+        <p class="hero-sub">A scalable coaching &amp; assessment platform delivering real-time exam sessions, analytics, and secure multi-tenant management for institutes across India.</p>
+      </div>
+
+      <!-- Status snapshot -->
+      <div class="tile tile--green tile--colored">
+        <div class="tile-label">Build status</div>
+        <div class="stat">
+          <div class="stat-num">6</div>
+          <div class="stat-label">Modules shipped</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">4</div>
+          <div class="stat-label">Billing plans</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">2</div>
+          <div class="stat-label">Auth flows</div>
+        </div>
+      </div>
+
+      <!-- Value propositions -->
+      <div class="tile tile--3 tile--blue tile--colored">
+        <div class="tile-label">Key value propositions</div>
+        <h2>Why Gyanverse?</h2>
+        <ul>
+          <li>Rapid tenant onboarding with strict per-institute data isolation</li>
+          <li>Secure authentication &amp; role-based access via Better Auth (email/password + phone OTP)</li>
+          <li>Real-time exam orchestration powered by BullMQ background worker queues</li>
+          <li>Flexible tiered plans — Free, Starter ₹999, Growth ₹2,499, Pro ₹5,999</li>
+          <li>Cloud-native storage on Cloudflare R2 and transactional email via Resend</li>
+          <li>Token-based invite flows for frictionless teacher &amp; student onboarding</li>
+        </ul>
+      </div>
+
+      <!-- Architecture approach -->
+      <div class="tile tile--2">
+        <div class="tile-label">Architecture approach</div>
+        <h2>Modular monolith first</h2>
+        <p>Start with a single deployable Fastify application partitioned into independent modules. Ship fast, keep operational overhead low. When specific components hit scale, extract them into dedicated services without a full rewrite — the module boundaries already exist.</p>
+        <p style="margin-top:10px;color:var(--muted)">Neon Postgres for persistence, BullMQ + Redis for async jobs, Cloudflare R2 for object storage.</p>
+      </div>
+
+      <!-- Shipped modules -->
+      <div class="tile tile--orange tile--colored">
+        <div class="tile-label">Shipped modules</div>
+        <ul>
+          <li><strong>Auth</strong> — email/password + MSG91 OTP</li>
+          <li><strong>Tenant</strong> — subdomain resolution, plan gates</li>
+          <li><strong>Class</strong> — tenant-scoped CRUD</li>
+          <li><strong>Membership</strong> — role-based access per tenant</li>
+          <li><strong>Billing</strong> — Razorpay + webhooks</li>
+          <li><strong>Invite</strong> — token-based onboarding</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <footer class="site-footer">
+      Contact: partnerships@vescavia.com &nbsp;&bull;&nbsp; &copy; 2025 Vescavia
+    </footer>
+  </main>
+
+</body>
+</html>

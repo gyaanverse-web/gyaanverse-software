@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Architecture — Vescavia Gyanverse</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <a class="brand" href="../index.html">Vescavia</a>
+    <nav class="main-nav">
+      <a href="../index.html">Overview</a>
+      <a href="executive.html">Executive Summary</a>
+      <a href="features.html">Features</a>
+      <a href="architecture.html" class="active">Architecture</a>
+      <a href="multitenancy.html">Multi-Tenancy</a>
+      <a href="system.html">System &amp; Tech</a>
+      <a href="../index.html#contact">Contact</a>
+    </nav>
+  </header>
+
+  <main class="page-wrap">
+    <div class="bento">
+
+      <!-- Hero -->
+      <div class="tile tile--2 tile--hero">
+        <div class="eyebrow">Architecture</div>
+        <h1>Modular Monolith</h1>
+        <p class="hero-sub">One deployable, many independent modules. Each feature owns its schema, types, service, and routes — ready to extract into a microservice without rewriting anything.</p>
+      </div>
+
+      <!-- Multi-tenancy -->
+      <div class="tile tile--pink tile--colored">
+        <div class="tile-label">Multi-tenancy</div>
+        <h2>Row-level isolation</h2>
+        <p>Every tenant-scoped table carries a <code>tenantId</code> FK. The tenant middleware resolves the subdomain to a tenant row on every request and attaches it to <code>request.tenant</code>.</p>
+        <p style="margin-top:10px">In local dev, <code>?tenant=slug</code> substitutes for the subdomain.</p>
+      </div>
+
+      <!-- Request flow -->
+      <div class="tile tile--3 tile--dark">
+        <div class="tile-label">Request flow</div>
+        <h2>How a request moves through the system</h2>
+        <pre><code>Client (web / mobile)
+  │
+  ▼
+Fastify HTTP API  (src/server.ts)
+  │  auth.middleware    →  verify session token or cookie, attach user
+  │  tenant.middleware  →  resolve subdomain → tenant row, attach tenant
+  │
+  ├── Global routes    (auth, billing, super-admin)
+  └── Tenant routes    (classes, members, invites, …)
+        │
+        ▼
+    Service layer  (pure business logic — no HTTP concerns)
+        │
+        ├── Drizzle ORM  →  Neon Postgres
+        ├── BullMQ queue →  Redis  →  Worker process (src/worker.ts)
+        └── Cloudflare R2           (file upload / signed URLs)</code></pre>
+      </div>
+
+      <!-- Background workers -->
+      <div class="tile tile--teal tile--colored">
+        <div class="tile-label">Async workers</div>
+        <h2>BullMQ + Redis</h2>
+        <p>A separate <code>src/worker.ts</code> process consumes queues from Redis. Jobs include email delivery, OTP dispatch, and exam orchestration. The worker shares the same Drizzle connection and services — no code duplication.</p>
+      </div>
+
+      <!-- Plan gating -->
+      <div class="tile tile--purple tile--colored">
+        <div class="tile-label">Plan &amp; feature gating</div>
+        <h2>Enforced at the service layer</h2>
+        <p>Limits are thrown as structured errors — <code>Errors.PLAN_LIMIT()</code> or <code>Errors.FEATURE_GATED()</code> — exclusively in services, never in route handlers.</p>
+        <div class="pill-group" style="margin-top:14px">
+          <span class="pill">Free</span>
+          <span class="pill">Starter ₹999</span>
+          <span class="pill">Growth ₹2,499</span>
+          <span class="pill">Pro ₹5,999</span>
+        </div>
+      </div>
+
+      <!-- Auth -->
+      <div class="tile tile--raised">
+        <div class="tile-label">Authentication</div>
+        <h2>Better Auth</h2>
+        <ul>
+          <li><strong>Email + password</strong> — verification required before first login</li>
+          <li><strong>Phone OTP</strong> — MSG91 (logs to console if keys absent in dev)</li>
+          <li><strong>authenticate()</strong> — verifies session token or cookie</li>
+          <li><strong>requireRole()</strong> — checks global user role</li>
+          <li><strong>requireTenantRole()</strong> — checks membership row for resolved tenant</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <footer class="site-footer">
+      Contact: partnerships@vescavia.com &nbsp;&bull;&nbsp; &copy; 2025 Vescavia
+    </footer>
+  </main>
+
+</body>
+</html>

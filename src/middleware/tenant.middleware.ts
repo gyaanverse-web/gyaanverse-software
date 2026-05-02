@@ -6,7 +6,8 @@ export async function tenantMiddleware(
   req: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
-  const host = req.headers.host ?? ''
+  // Strip port so sharma.yourapp.com:3000 resolves the same as sharma.yourapp.com
+  const host = (req.headers.host ?? '').replace(/:\d+$/, '')
   const appDomain = process.env.APP_DOMAIN ?? 'yourapp.com'
 
   let slug: string | undefined

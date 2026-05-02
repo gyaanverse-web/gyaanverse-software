@@ -1,63 +1,271 @@
+import { eq, and, inArray } from 'drizzle-orm'
 import { db } from '../../shared/db.js'
+import { AppError, Errors } from '../../shared/errors.js'
 import { tenants, tenantSettings } from './tenant.schema.js'
-import { eq } from 'drizzle-orm'
-import { AppError } from '../../shared/errors.js'
+import { memberships, coachingJoinCodes } from '../membership/membership.schema.js'
+import { classes, classMembers, joinCodes } from '../class/class.schema.js'
+import { users } from '../auth/auth.schema.js'
+import { assertWithinLimit, assertHasFeature } from '../billing/billing.service.js'
 import type { Tenant } from './tenant.types.js'
 
 const RESERVED_SLUGS = ['www', 'api', 'admin', 'app', 'static']
 
-function toTenant(row: {
-  status: string
-} & Omit<Tenant, 'status'>): Tenant {
+function toTenant(row: { status: string } & Omit<Tenant, 'status'>): Tenant {
   if (row.status !== 'active' && row.status !== 'suspended') {
     throw new AppError('INVALID_TENANT_STATUS', 'Invalid tenant status', 500)
   }
-
   return { ...row, status: row.status }
 }
 
 export async function getTenantBySlug(slug: string): Promise<Tenant | null> {
-  const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1)
-  return rows[0] ? toTenant(rows[0]) : null
+  const [row] = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1)
+  return row ? toTenant(row) : null
 }
 
 export async function getTenantById(id: string): Promise<Tenant | null> {
-  const rows = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1)
-  return rows[0] ? toTenant(rows[0]) : null
+  const [row] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1)
+  return row ? toTenant(row) : null
 }
 
-export async function createTenant(data: {
-  slug: string
-  name: string
-  ownerId: string
-}): Promise<Tenant> {
-  const slug = data.slug.toLowerCase()
-
+async function validateSlug(slug: string): Promise<void> {
   if (!/^[a-z0-9-]+$/.test(slug)) {
     throw new AppError('INVALID_SLUG', 'Slug must contain only lowercase letters, numbers, and hyphens', 422)
   }
-
   if (RESERVED_SLUGS.includes(slug)) {
     throw new AppError('RESERVED_SLUG', 'That slug is reserved', 409)
   }
+  const [existing] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, slug)).limit(1)
+  if (existing) throw Errors.CONFLICT('That slug is already taken')
+}
 
-  const [tenant] = await db.insert(tenants).values({
-    slug,
-    name: data.name,
-    ownerId: data.ownerId,
-  }).returning()
+export async function createTenant(data: { slug: string; name: string; ownerId: string }): Promise<Tenant> {
+  const slug = data.slug.toLowerCase()
+  await validateSlug(slug)
 
-  await db.insert(tenantSettings).values({ tenantId: tenant.id })
-
-  return toTenant(tenant)
+  return db.transaction(async (tx) => {
+    const [tenant] = await tx.insert(tenants).values({ slug, name: data.name, ownerId: data.ownerId }).returning()
+    await tx.insert(tenantSettings).values({ tenantId: tenant.id })
+    return toTenant(tenant)
+  })
 }
 
 export async function updateSettings(
   tenantId: string,
   data: { allowPublicMocks?: boolean; customDomain?: string | null },
 ): Promise<void> {
+  if (data.allowPublicMocks === true) await assertHasFeature(tenantId, 'public_mocks')
+  if (data.customDomain != null) await assertHasFeature(tenantId, 'custom_branding')
+  await db.update(tenantSettings).set(data).where(eq(tenantSettings.tenantId, tenantId))
+}
+
+// ── Register a new coaching institute ──────────────────────────────────────
+
+export async function registerCoaching(ownerId: string, data: { slug: string; name: string }) {
+  const slug = data.slug.toLowerCase()
+  await validateSlug(slug)
+
+  const [owner] = await db
+    .select({ emailVerified: users.emailVerified, phoneNumberVerified: users.phoneNumberVerified })
+    .from(users)
+    .where(eq(users.id, ownerId))
+    .limit(1)
+  if (!owner || (!owner.emailVerified && !owner.phoneNumberVerified)) {
+    throw new AppError(
+      'IDENTITY_NOT_VERIFIED',
+      'Verify your email (check your inbox for a verification link) or phone number before creating a coaching institute',
+      403,
+    )
+  }
+
+  const [existingOwnership] = await db
+    .select({ id: memberships.id })
+    .from(memberships)
+    .where(and(eq(memberships.userId, ownerId), eq(memberships.role, 'coaching_owner')))
+    .limit(1)
+  if (existingOwnership) throw Errors.CONFLICT('You already own a coaching institute')
+
+  return db.transaction(async (tx) => {
+    const [tenant] = await tx.insert(tenants).values({ slug, name: data.name, ownerId }).returning()
+    await tx.insert(tenantSettings).values({ tenantId: tenant.id })
+    await tx.insert(memberships).values({ userId: ownerId, tenantId: tenant.id, role: 'coaching_owner' })
+    await tx.update(users).set({ role: 'coaching_owner', tenantId: tenant.id }).where(eq(users.id, ownerId))
+    return { tenant: toTenant(tenant) }
+  })
+}
+
+// ── Add a teacher to the coaching ──────────────────────────────────────────
+
+export async function addTeacher(tenantId: string, phone: string) {
+  const [teacher] = await db.select().from(users).where(eq(users.phoneNumber, phone)).limit(1)
+  if (!teacher) {
+    throw new AppError(
+      'USER_NOT_FOUND',
+      'No user found with that phone number. Ask them to sign in first.',
+      404,
+    )
+  }
+
+  const [existing] = await db
+    .select({ id: memberships.id })
+    .from(memberships)
+    .where(and(eq(memberships.userId, teacher.id), eq(memberships.tenantId, tenantId)))
+    .limit(1)
+  if (existing) throw Errors.CONFLICT('User is already a member of this coaching')
+
+  await assertWithinLimit(tenantId, 'teachers')
+
+  await db.transaction(async (tx) => {
+    await tx.insert(memberships).values({ userId: teacher.id, tenantId, role: 'teacher' })
+    await tx.update(users).set({ role: 'teacher', tenantId }).where(eq(users.id, teacher.id))
+  })
+
+  return { id: teacher.id, name: teacher.name, phone: teacher.phoneNumber, role: 'teacher' }
+}
+
+// ── Student joins a coaching ────────────────────────────────────────────────
+
+export async function joinAsStudent(userId: string, tenantId: string) {
+  const tenant = await getTenantById(tenantId)
+  if (!tenant) throw Errors.NOT_FOUND('Coaching')
+  if (tenant.status !== 'active') throw new AppError('TENANT_SUSPENDED', 'This coaching is suspended', 403)
+
+  const [existing] = await db
+    .select({ id: memberships.id })
+    .from(memberships)
+    .where(and(eq(memberships.userId, userId), eq(memberships.tenantId, tenantId)))
+    .limit(1)
+  if (existing) throw Errors.CONFLICT('Already a member of this coaching')
+
+  await assertWithinLimit(tenantId, 'students')
+
+  await db.transaction(async (tx) => {
+    await tx.insert(memberships).values({ userId, tenantId, role: 'student' })
+    await tx.update(users).set({ tenantId }).where(eq(users.id, userId))
+  })
+
+  return { success: true }
+}
+
+// ── Get the coaching the current user belongs to ────────────────────────────
+
+export async function getMyTenant(userId: string): Promise<Tenant | null> {
+  const [row] = await db
+    .select({ tenantId: memberships.tenantId })
+    .from(memberships)
+    .where(eq(memberships.userId, userId))
+    .limit(1)
+  return row ? getTenantById(row.tenantId) : null
+}
+
+// ── List members of a coaching ──────────────────────────────────────────────
+
+export async function listMembers(tenantId: string, role?: string) {
+  const condition = role
+    ? and(eq(memberships.tenantId, tenantId), eq(memberships.role, role))
+    : eq(memberships.tenantId, tenantId)
+
+  return db
+    .select({
+      userId: memberships.userId,
+      role: memberships.role,
+      joinedAt: memberships.createdAt,
+      name: users.name,
+      phone: users.phoneNumber,
+      email: users.email,
+    })
+    .from(memberships)
+    .innerJoin(users, eq(memberships.userId, users.id))
+    .where(condition)
+}
+
+// ── Update coaching details ─────────────────────────────────────────────────
+
+export async function updateTenant(
+  tenantId: string,
+  requesterId: string,
+  data: { name?: string; logoUrl?: string | null },
+): Promise<Tenant> {
+  const tenant = await getTenantById(tenantId)
+  if (!tenant) throw Errors.NOT_FOUND('Coaching')
+  if (tenant.ownerId !== requesterId) throw Errors.FORBIDDEN()
+
+  const [updated] = await db
+    .update(tenants)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(tenants.id, tenantId))
+    .returning()
+  return toTenant(updated)
+}
+
+// ── Delete a coaching institute ─────────────────────────────────────────────
+
+export async function deleteCoaching(tenantId: string, requesterId: string): Promise<void> {
+  const tenant = await getTenantById(tenantId)
+  if (!tenant) throw Errors.NOT_FOUND('Coaching')
+  if (tenant.ownerId !== requesterId) throw Errors.FORBIDDEN()
+
+  await db.transaction(async (tx) => {
+    // Collect member user IDs so we can reset their profile fields
+    const members = await tx
+      .select({ userId: memberships.userId })
+      .from(memberships)
+      .where(eq(memberships.tenantId, tenantId))
+
+    const memberIds = members.map((m) => m.userId)
+
+    // Reset tenantId + role for every member (owner included)
+    if (memberIds.length > 0) {
+      await tx
+        .update(users)
+        .set({ tenantId: null, role: 'student' })
+        .where(and(inArray(users.id, memberIds), eq(users.tenantId, tenantId)))
+    }
+
+    // Remove class-level data before deleting classes
+    const tenantClasses = await tx
+      .select({ id: classes.id })
+      .from(classes)
+      .where(eq(classes.tenantId, tenantId))
+
+    const classIds = tenantClasses.map((c) => c.id)
+    if (classIds.length > 0) {
+      await tx.delete(classMembers).where(inArray(classMembers.classId, classIds))
+      await tx.delete(joinCodes).where(inArray(joinCodes.classId, classIds))
+    }
+
+    await tx.delete(classes).where(eq(classes.tenantId, tenantId))
+    await tx.delete(memberships).where(eq(memberships.tenantId, tenantId))
+    await tx.delete(coachingJoinCodes).where(eq(coachingJoinCodes.tenantId, tenantId))
+    await tx.delete(tenantSettings).where(eq(tenantSettings.tenantId, tenantId))
+    // invites cascade automatically (onDelete: 'cascade' on invites.tenantId)
+    await tx.delete(tenants).where(eq(tenants.id, tenantId))
+  })
+}
+
+// ── Remove a member from the coaching ──────────────────────────────────────
+
+export async function removeMember(tenantId: string, targetUserId: string, requesterId: string) {
+  if (targetUserId === requesterId) throw new AppError('FORBIDDEN', 'Cannot remove yourself', 403)
+
+  const [membership] = await db
+    .select()
+    .from(memberships)
+    .where(and(eq(memberships.userId, targetUserId), eq(memberships.tenantId, tenantId)))
+    .limit(1)
+  if (!membership) throw Errors.NOT_FOUND('Membership')
+  if (membership.role === 'coaching_owner') {
+    throw new AppError('FORBIDDEN', 'Cannot remove the coaching owner', 403)
+  }
+
   await db
-    .update(tenantSettings)
-    .set(data)
-    .where(eq(tenantSettings.tenantId, tenantId))
+    .delete(memberships)
+    .where(and(eq(memberships.userId, targetUserId), eq(memberships.tenantId, tenantId)))
+
+  // Reset user's tenantId+role only if this was their primary tenant
+  await db
+    .update(users)
+    .set({ tenantId: null, role: 'student' })
+    .where(and(eq(users.id, targetUserId), eq(users.tenantId, tenantId)))
+
+  return { success: true }
 }

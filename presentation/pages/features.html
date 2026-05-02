@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Features &amp; Modules — Vescavia Gyanverse</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <a class="brand" href="../index.html">Vescavia</a>
+    <nav class="main-nav">
+      <a href="../index.html">Overview</a>
+      <a href="executive.html">Executive Summary</a>
+      <a href="features.html" class="active">Features</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="multitenancy.html">Multi-Tenancy</a>
+      <a href="system.html">System &amp; Tech</a>
+      <a href="../index.html#contact">Contact</a>
+    </nav>
+  </header>
+
+  <main class="page-wrap">
+    <div class="bento">
+
+      <!-- Hero -->
+      <div class="tile tile--2 tile--hero">
+        <div class="eyebrow">Core Features &amp; Modules</div>
+        <h1>Everything a Coaching Institute Needs</h1>
+        <p class="hero-sub">Six production-ready modules covering identity, institute management, classes, enrolment, teacher invitations, and subscription billing — all enforced at the service layer, never scattered across route handlers.</p>
+      </div>
+
+      <!-- Stats -->
+      <div class="tile tile--green tile--colored">
+        <div class="tile-label">At a glance</div>
+        <div class="stat">
+          <div class="stat-num">6</div>
+          <div class="stat-label">Shipped modules</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">39</div>
+          <div class="stat-label">API routes</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">12</div>
+          <div class="stat-label">DB tables</div>
+        </div>
+      </div>
+
+      <!-- Auth module -->
+      <div class="tile tile--blue tile--colored">
+        <div class="tile-label">Module 01 — Auth</div>
+        <h2>Identity &amp; Sessions</h2>
+        <ul>
+          <li><strong>Email + password</strong> — sign-up, sign-in, email verification required before first login, password reset flow</li>
+          <li><strong>Phone OTP</strong> — MSG91 in production, console-logged in dev for zero external dependencies during development</li>
+          <li><strong>Sessions</strong> — secure HttpOnly cookie and Bearer token (for mobile clients), both handled by Better Auth</li>
+          <li><strong>Profile</strong> — name, phone, email; phone-only accounts can upgrade to email later without losing their session</li>
+          <li><strong>Dual identity path</strong> — phone users get a synthetic <code>@phone.gyanverse.app</code> email internally; real email added via a verified upgrade flow</li>
+        </ul>
+        <div class="pill-group" style="margin-top:14px">
+          <span class="pill">Better Auth</span>
+          <span class="pill">MSG91</span>
+          <span class="pill">Resend</span>
+        </div>
+      </div>
+
+      <!-- Tenant module -->
+      <div class="tile tile--purple tile--colored">
+        <div class="tile-label">Module 02 — Tenant</div>
+        <h2>Coaching Institute Management</h2>
+        <ul>
+          <li><strong>Registration</strong> — any verified user registers a coaching with a unique slug; becomes the <code>coaching_owner</code> in one atomic transaction</li>
+          <li><strong>Slug rules</strong> — lowercase, alphanumeric + hyphens; reserved words (<code>www</code>, <code>api</code>, <code>admin</code>, <code>app</code>, <code>static</code>) blocked</li>
+          <li><strong>Teacher management</strong> — owner adds teachers by phone number; plan limits enforced before insert</li>
+          <li><strong>Student joins</strong> — direct join by tenant ID or via shareable join code</li>
+          <li><strong>Branding</strong> — logo URL; Pro plan unlocks custom domain via <code>tenantSettings</code></li>
+          <li><strong>Cascade delete</strong> — removing the institute resets all member roles and purges all data atomically</li>
+        </ul>
+        <div class="pill-group" style="margin-top:14px">
+          <span class="pill">9 routes</span>
+          <span class="pill">2 DB tables</span>
+        </div>
+      </div>
+
+      <!-- Class module -->
+      <div class="tile tile--teal tile--colored">
+        <div class="tile-label">Module 03 — Class</div>
+        <h2>Classes &amp; Enrolment</h2>
+        <ul>
+          <li><strong>Class CRUD</strong> — teachers create and own their classes; owners can manage any class within their institute</li>
+          <li><strong>Join codes</strong> — each class generates multiple codes with optional expiry and max-use cap</li>
+          <li><strong>Auto-approve toggle</strong> — new students are either approved instantly or held in <em>pending</em> status for teacher review</li>
+          <li><strong>Approval workflow</strong> — teacher reviews pending enrolments and approves or rejects; rejected students can re-request</li>
+          <li><strong>Role-aware listing</strong> — students see only approved classes; teachers and owners see all</li>
+          <li><strong>Membership prerequisite</strong> — student must belong to the coaching before joining any of its classes</li>
+        </ul>
+        <div class="pill-group" style="margin-top:14px">
+          <span class="pill">13 routes</span>
+          <span class="pill">3 DB tables</span>
+        </div>
+      </div>
+
+      <!-- Membership module -->
+      <div class="tile tile--pink tile--colored">
+        <div class="tile-label">Module 04 — Membership</div>
+        <h2>Coaching Join Codes</h2>
+        <ul>
+          <li><strong>Shareable codes</strong> — 8-character uppercase codes; deliberately excludes <code>0 O 1 I</code> to prevent misreading</li>
+          <li><strong>Public preview</strong> — unauthenticated endpoint returns coaching name and logo before committing to join</li>
+          <li><strong>Authenticated join</strong> — inserts membership and sets <code>users.tenantId</code> in a single transaction; plan limit checked first</li>
+          <li><strong>Lifecycle controls</strong> — owner can revoke codes; codes expire by date or max-use count</li>
+          <li><strong>Uniqueness guarantee</strong> — <code>(userId, tenantId)</code> unique index at DB level; duplicate joins caught at app layer first</li>
+        </ul>
+        <div class="pill-group" style="margin-top:14px">
+          <span class="pill">5 routes</span>
+          <span class="pill">2 DB tables</span>
+        </div>
+      </div>
+
+      <!-- Invite module -->
+      <div class="tile tile--orange tile--colored">
+        <div class="tile-label">Module 05 — Invite</div>
+        <h2>Teacher Invitations</h2>
+        <ul>
+          <li><strong>Token-based</strong> — 32-char hex token (UUID without hyphens), stored in DB, delivered via email or SMS</li>
+          <li><strong>48-hour TTL</strong> — invites expire automatically; acceptance after expiry is rejected</li>
+          <li><strong>Contact verification</strong> — teacher's verified email or phone must match the invite's contact before acceptance proceeds</li>
+          <li><strong>Lifecycle</strong> — pending → accepted (on use) or revoked (by owner); terminal states cannot be undone</li>
+          <li><strong>Duplicate guard</strong> — only one pending invite per contact per tenant at a time</li>
+          <li><strong>Dev mode</strong> — email and SMS payloads logged to console; no external service required during development</li>
+        </ul>
+        <div class="pill-group" style="margin-top:14px">
+          <span class="pill">4 routes</span>
+          <span class="pill">1 DB table</span>
+        </div>
+      </div>
+
+      <!-- Billing module -->
+      <div class="tile tile--raised">
+        <div class="tile-label">Module 06 — Billing</div>
+        <h2>Plan Enforcement</h2>
+        <ul>
+          <li><strong>Centralised gatekeeping</strong> — all limit and feature checks live exclusively in <code>billing.service.ts</code>; route handlers never contain plan logic</li>
+          <li><strong>Live usage counts</strong> — student, teacher, class, mock, and AI evaluation quotas are counted from the DB on each operation — no cached counters that drift</li>
+          <li><strong><code>assertWithinLimit(tenantId, limit)</code></strong> — throws <code>PLAN_LIMIT</code> before any write if at or over quota</li>
+          <li><strong><code>assertHasFeature(tenantId, feature)</code></strong> — throws <code>FEATURE_GATED</code> if the tenant's plan does not include the requested feature</li>
+          <li><strong>Razorpay webhooks</strong> — subscription events upgrade or downgrade the plan stored on the tenant row</li>
+        </ul>
+        <div class="pill-group" style="margin-top:14px">
+          <span class="pill">Razorpay</span>
+          <span class="pill">4 plans</span>
+          <span class="pill">5 limit types</span>
+          <span class="pill">4 feature flags</span>
+        </div>
+      </div>
+
+      <!-- Plan comparison — full width dark -->
+      <div class="tile tile--3 tile--dark">
+        <div class="tile-label">Subscription Plans</div>
+        <h2>Plan Limits &amp; Features</h2>
+        <pre><code>                    Free        Starter      Growth       Pro
+                                ₹999 /mo     ₹2,499 /mo   ₹5,999 /mo
+─────────────────────────────────────────────────────────────────────
+Students              30          100          500           ∞
+Teachers               5           10           20           ∞
+Classes                5           20           50           ∞
+Mocks / month          3           15           50           ∞
+AI Evaluations        10          100          500           ∞
+
+─────────────────────────────────────────────────────────────────────
+public_mocks           ✗           ✓            ✓            ✓
+analytics              ✗           ✗            ✓            ✓
+custom_branding        ✗           ✗            ✗            ✓
+api_access             ✗           ✗            ✗            ✓</code></pre>
+        <p style="margin-top:16px; color:var(--faint); font-size:13px">All limits enforced at write time via <code>assertWithinLimit()</code>. Features gated via <code>assertHasFeature()</code>. The plan name is stored on the tenant row and resolved on every operation — no client-side trust.</p>
+      </div>
+
+      <!-- Enrolment flow -->
+      <div class="tile tile--2">
+        <div class="tile-label">Class Enrolment Flow</div>
+        <h2>From Code to Classroom</h2>
+        <p>A student joining a class goes through a layered workflow designed to give teachers full control without adding friction for institutes that want open enrolment:</p>
+        <ol style="margin-top:12px; padding-left:18px; line-height:2">
+          <li>Teacher generates a class join code (optional expiry + max-use cap)</li>
+          <li>Student hits <code>GET /tenant/classes/join/:code</code> — previews class name and institute, no auth required</li>
+          <li>Student posts to <code>POST /tenant/classes/join/:code</code> with a valid session</li>
+          <li>System checks: student is a coaching member → plan class limit → code is valid and unexpired</li>
+          <li><strong>autoApprove = true</strong> → enrolment inserted as <code>approved</code>, student can access class immediately</li>
+          <li><strong>autoApprove = false</strong> → enrolment inserted as <code>pending</code>, teacher reviews via <code>PATCH /tenant/classes/:id/students/:studentId</code></li>
+        </ol>
+      </div>
+
+      <!-- Role hierarchy -->
+      <div class="tile">
+        <div class="tile-label">Access Control</div>
+        <h2>Role Hierarchy</h2>
+        <ul>
+          <li><strong>super_admin</strong> — platform-level, all tenants</li>
+          <li><strong>coaching_owner</strong> — full control of their institute, classes, and members</li>
+          <li><strong>teacher</strong> — manages their own classes and enrolments within the institute</li>
+          <li><strong>student</strong> — reads approved class content, joins via codes</li>
+        </ul>
+        <p style="margin-top:12px; color:var(--muted); font-size:13.5px">Global role lives on <code>users.role</code>. Tenant role is always read live from the <code>memberships</code> table — revocations take effect on the next request with no cache to invalidate.</p>
+      </div>
+
+    </div>
+
+    <footer class="site-footer">
+      Contact: partnerships@vescavia.com &nbsp;&bull;&nbsp; &copy; 2025 Vescavia
+    </footer>
+  </main>
+
+</body>
+</html>

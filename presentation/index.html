@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vescavia — Gyanverse Backend</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <a class="brand" href="index.html">Vescavia</a>
+    <nav class="main-nav">
+      <a href="index.html" class="active">Overview</a>
+      <a href="pages/executive.html">Executive Summary</a>
+      <a href="pages/features.html">Features</a>
+      <a href="pages/architecture.html">Architecture</a>
+      <a href="pages/multitenancy.html">Multi-Tenancy</a>
+      <a href="pages/system.html">System &amp; Tech</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </header>
+
+  <main class="page-wrap">
+    <div class="bento">
+
+      <!-- Hero -->
+      <div class="tile tile--3 tile--hero">
+        <div class="eyebrow">Backend Infrastructure</div>
+        <h1>Vescavia &times; Gyanverse</h1>
+        <p class="hero-sub">Multi-tenant SaaS backend built for India's coaching ecosystem — real-time exams, role-based access, and subscription billing, all in one modular monolith.</p>
+        <div class="btn-group">
+          <a class="btn btn-primary" href="pages/executive.html">Executive Summary &rarr;</a>
+          <a class="btn btn-ghost" href="pages/architecture.html">View Architecture</a>
+        </div>
+      </div>
+
+      <!-- Executive Summary teaser -->
+      <div class="tile tile--2 tile--blue tile--colored">
+        <div class="tile-label">Section 01</div>
+        <h2>Executive Summary</h2>
+        <p>Platform overview, key value propositions, current module status, and the strategic path from modular monolith to microservices.</p>
+        <a class="tile-link" href="pages/executive.html">Read section &rarr;</a>
+      </div>
+
+      <!-- Quick stats -->
+      <div class="tile tile--purple tile--colored">
+        <div class="tile-label">At a glance</div>
+        <div class="stat">
+          <div class="stat-num">6</div>
+          <div class="stat-label">Feature modules</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">4</div>
+          <div class="stat-label">Subscription plans</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">2</div>
+          <div class="stat-label">Auth methods</div>
+        </div>
+      </div>
+
+      <!-- Architecture teaser -->
+      <div class="tile tile--orange tile--colored">
+        <div class="tile-label">Section 02</div>
+        <h2>Architecture</h2>
+        <p>Modular monolith, subdomain-based multi-tenancy, async worker queues, and plan enforcement at the service layer.</p>
+        <a class="tile-link" href="pages/architecture.html">Read section &rarr;</a>
+      </div>
+
+      <!-- System & Tech teaser -->
+      <div class="tile tile--teal tile--colored">
+        <div class="tile-label">Section 03</div>
+        <h2>System &amp; Tech</h2>
+        <p>Full stack breakdown — Fastify 5, Drizzle ORM, Neon Postgres, BullMQ, Resend, Cloudflare R2, and Razorpay.</p>
+        <a class="tile-link" href="pages/system.html">Read section &rarr;</a>
+      </div>
+
+      <!-- Tech stack pills -->
+      <div class="tile tile--raised">
+        <div class="tile-label">Tech stack</div>
+        <div class="pill-group">
+          <span class="pill">Fastify 5</span>
+          <span class="pill">TypeScript</span>
+          <span class="pill">Drizzle ORM</span>
+          <span class="pill">Neon Postgres</span>
+          <span class="pill">BullMQ</span>
+          <span class="pill">Redis</span>
+          <span class="pill">Better Auth</span>
+          <span class="pill">Resend</span>
+          <span class="pill">Cloudflare R2</span>
+          <span class="pill">Razorpay</span>
+          <span class="pill">MSG91</span>
+          <span class="pill">Railway</span>
+        </div>
+      </div>
+
+    </div>
+
+    <footer id="contact" class="site-footer">
+      Contact: partnerships@vescavia.com &nbsp;&bull;&nbsp; &copy; 2025 Vescavia
+    </footer>
+  </main>
+
+</body>
+</html>

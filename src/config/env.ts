@@ -7,6 +7,11 @@ function requireEnv(key: string): string {
   return value
 }
 
+function devOptional(key: string): string {
+  if (process.env.NODE_ENV === 'production') return requireEnv(key)
+  return process.env[key] ?? ''
+}
+
 export const env = {
   DATABASE_URL: requireEnv('DATABASE_URL'),
   REDIS_URL: requireEnv('REDIS_URL'),
@@ -18,8 +23,9 @@ export const env = {
   R2_BUCKET_NAME: requireEnv('R2_BUCKET_NAME'),
   R2_PUBLIC_URL: requireEnv('R2_PUBLIC_URL'),
   RESEND_API_KEY: requireEnv('RESEND_API_KEY'),
-  MSG91_AUTH_KEY: requireEnv('MSG91_AUTH_KEY'),
-  MSG91_TEMPLATE_ID: requireEnv('MSG91_TEMPLATE_ID'),
+  MSG91_AUTH_KEY: devOptional('MSG91_AUTH_KEY'),
+  MSG91_TEMPLATE_ID: devOptional('MSG91_TEMPLATE_ID'),
+  FRONTEND_URL: process.env.FRONTEND_URL ?? 'http://localhost:5173',
   RAZORPAY_KEY_ID: requireEnv('RAZORPAY_KEY_ID'),
   RAZORPAY_KEY_SECRET: requireEnv('RAZORPAY_KEY_SECRET'),
   RAZORPAY_WEBHOOK_SECRET: requireEnv('RAZORPAY_WEBHOOK_SECRET'),

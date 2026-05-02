@@ -24,3 +24,15 @@ export interface Enrollment {
   tenantId: string
   joinedAt: Date
 }
+
+export interface CoachingJoinCode {
+  id: string
+  tenantId: string
+  createdBy: string
+  code: string
+  expiresAt: Date | null
+  maxUses: number
+  usedCount: number
+  revoked: boolean
+  createdAt: Date
+}
