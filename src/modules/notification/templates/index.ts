@@ -1,0 +1,182 @@
+import type { NotificationType } from '../notification.types.js'
+
+interface TemplateData {
+  recipientName: string
+  link?: string | null
+  [key: string]: unknown
+}
+
+interface EmailTemplate {
+  subject: string
+  html: string
+}
+
+// Shared layout wrapper — keeps all emails visually consistent
+function layout(content: string, link?: string | null): string {
+  const button = link
+    ? `<p style="margin:24px 0"><a href="${link}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Open in Gyanverse</a></p>`
+    : ''
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;padding:40px;border:1px solid #e5e7eb;max-width:600px">
+        <tr><td>
+          <p style="margin:0 0 24px;font-size:22px;font-weight:700;color:#111">Gyanverse</p>
+          ${content}
+          ${button}
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0">
+          <p style="margin:0;font-size:13px;color:#6b7280">You're receiving this because you're a member of a coaching on Gyanverse. To manage notifications, visit your profile settings.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+}
+
+// ── Per-type templates ────────────────────────────────────────────────────────
+
+function examAssigned(data: TemplateData & { examTitle: string; className: string }): EmailTemplate {
+  return {
+    subject: `New Exam: ${data.examTitle}`,
+    html: layout(`
+      <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
+      <p style="margin:0 0 16px;font-size:16px;color:#374151">
+        A new exam <strong>${data.examTitle}</strong> has been assigned to your class <strong>${data.className}</strong>.
+      </p>
+      <p style="margin:0;font-size:14px;color:#6b7280">Click below to view the exam details and start when you're ready.</p>
+    `, data.link),
+  }
+}
+
+function examStartingSoon(data: TemplateData & { examTitle: string }): EmailTemplate {
+  return {
+    subject: `Reminder: ${data.examTitle} starts soon`,
+    html: layout(`
+      <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
+      <p style="margin:0 0 16px;font-size:16px;color:#374151">
+        Your exam <strong>${data.examTitle}</strong> is starting soon. Make sure you're ready!
+      </p>
+    `, data.link),
+  }
+}
+
+function resultReady(data: TemplateData & { examTitle: string }): EmailTemplate {
+  return {
+    subject: `Your result is ready: ${data.examTitle}`,
+    html: layout(`
+      <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
+      <p style="margin:0 0 16px;font-size:16px;color:#374151">
+        Your result for <strong>${data.examTitle}</strong> has been evaluated and is ready to view.
+      </p>
+    `, data.link),
+  }
+}
+
+function inviteReceived(data: TemplateData & { coachingName: string }): EmailTemplate {
+  return {
+    subject: `You've been invited to ${data.coachingName}`,
+    html: layout(`
+      <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
+      <p style="margin:0 0 16px;font-size:16px;color:#374151">
+        You've been invited to join <strong>${data.coachingName}</strong> on Gyanverse.
+      </p>
+    `, data.link),
+  }
+}
+
+function inviteAccepted(data: TemplateData & { studentName: string }): EmailTemplate {
+  return {
+    subject: `${data.studentName} accepted your invite`,
+    html: layout(`
+      <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
+      <p style="margin:0 0 16px;font-size:16px;color:#374151">
+        <strong>${data.studentName}</strong> has accepted your invite and joined your coaching.
+      </p>
+    `, data.link),
+  }
+}
+
+function paymentConfirmed(data: TemplateData & { planName: string }): EmailTemplate {
+  return {
+    subject: 'Payment confirmed — subscription active',
+    html: layout(`
+      <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
+      <p style="margin:0 0 16px;font-size:16px;color:#374151">
+        Your payment has been confirmed and your <strong>${data.planName}</strong> subscription is now active.
+      </p>
+    `, data.link),
+  }
+}
+
+function paymentFailed(data: TemplateData): EmailTemplate {
+  return {
+    subject: 'Action required: payment failed',
+    html: layout(`
+      <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
+      <p style="margin:0 0 16px;font-size:16px;color:#374151">
+        We were unable to process your recent payment. Please update your payment details to keep your subscription active.
+      </p>
+    `, data.link),
+  }
+}
+
+function planLimitWarning(data: TemplateData & { limitName: string }): EmailTemplate {
+  return {
+    subject: `You're approaching your ${data.limitName} limit`,
+    html: layout(`
+      <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
+      <p style="margin:0 0 16px;font-size:16px;color:#374151">
+        Your coaching is approaching the <strong>${data.limitName}</strong> limit on your current plan. Consider upgrading to avoid disruption.
+      </p>
+    `, data.link),
+  }
+}
+
+function generic(data: TemplateData & { title: string; body: string }): EmailTemplate {
+  return {
+    subject: data.title,
+    html: layout(`
+      <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
+      <p style="margin:0 0 16px;font-size:16px;color:#374151">${data.body}</p>
+    `, data.link),
+  }
+}
+
+// ── Public resolver — maps NotificationType → template function ──────────────
+
+export function resolveEmailTemplate(
+  type: NotificationType,
+  data: Record<string, unknown>,
+): EmailTemplate {
+  const base = {
+    recipientName: (data.recipientName as string) ?? 'there',
+    link: (data.link as string | null) ?? null,
+  }
+
+  switch (type) {
+    case 'exam_assigned':
+      return examAssigned({ ...base, examTitle: data.examTitle as string, className: data.className as string })
+    case 'exam_starting_soon':
+      return examStartingSoon({ ...base, examTitle: data.examTitle as string })
+    case 'result_ready':
+      return resultReady({ ...base, examTitle: data.examTitle as string })
+    case 'invite_received':
+      return inviteReceived({ ...base, coachingName: data.coachingName as string })
+    case 'invite_accepted':
+      return inviteAccepted({ ...base, studentName: data.studentName as string })
+    case 'payment_confirmed':
+      return paymentConfirmed({ ...base, planName: data.planName as string })
+    case 'payment_failed':
+      return paymentFailed(base)
+    case 'plan_limit_warning':
+      return planLimitWarning({ ...base, limitName: data.limitName as string })
+    default:
+      return generic({ ...base, title: data.title as string, body: data.body as string })
+  }
+}

@@ -1,0 +1,1212 @@
+{
+  "grade": "9",
+  "subject": "Physics",
+  "questions": [
+    {
+      "ref": "9-phy-flm-1",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "An external influence which changes or tends to change the state of rest or uniform motion of a body, or its dimensions, is called:",
+      "options": [
+        { "id": "a", "text": "momentum" },
+        { "id": "b", "text": "force" },
+        { "id": "c", "text": "moment of force" },
+        { "id": "d", "text": "pressure" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-2",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "Equal and opposite forces acting on a body which do not change its state of rest or uniform motion are called:",
+      "options": [
+        { "id": "a", "text": "like parallel forces" },
+        { "id": "b", "text": "unlike parallel forces" },
+        { "id": "c", "text": "balanced forces" },
+        { "id": "d", "text": "all the above" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-3",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The unequal and opposite forces acting on a body, which change its state of rest or uniform motion, are called:",
+      "options": [
+        { "id": "a", "text": "unbalanced forces" },
+        { "id": "b", "text": "unlike parallel forces" },
+        { "id": "c", "text": "like parallel forces" },
+        { "id": "d", "text": "all the above" }
+      ],
+      "answer": "a",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Client answer key marks (B). Conceptually, unequal and opposite forces that change a body's state of motion are unbalanced forces (A). Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-4",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The force of friction always acts in the direction:",
+      "options": [
+        { "id": "a", "text": "of the applied force" },
+        { "id": "b", "text": "opposite to the direction of the applied force" },
+        { "id": "c", "text": "at right angles to the direction of the applied force" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-5",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "When balanced forces act on a body, the body:",
+      "options": [
+        { "id": "a", "text": "must remain in its state of rest" },
+        { "id": "b", "text": "must continue moving with uniform velocity, if already in motion" },
+        { "id": "c", "text": "must experience some acceleration" },
+        { "id": "d", "text": "both (A) and (B)" }
+      ],
+      "answer": "d",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-6",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "When unbalanced forces act on a body, it:",
+      "options": [
+        { "id": "a", "text": "must move with uniform velocity" },
+        { "id": "b", "text": "must remain at rest" },
+        { "id": "c", "text": "must experience acceleration" },
+        { "id": "d", "text": "must move in a curved path" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-7",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "If no external force acts on a body, it will:",
+      "options": [
+        { "id": "a", "text": "move with more speed" },
+        { "id": "b", "text": "change its shape" },
+        { "id": "c", "text": "break its shape" },
+        { "id": "d", "text": "either remain in its state of rest or in uniform motion" }
+      ],
+      "answer": "d",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-8",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "If a body is allowed to fall freely from a height, its speed increases continuously. This is because:",
+      "options": [
+        { "id": "a", "text": "air does not exert frictional force" },
+        { "id": "b", "text": "the magnetic force of the earth increases its speed" },
+        { "id": "c", "text": "the gravitational force of the earth increases its speed" },
+        { "id": "d", "text": "the pressure of air forces it downward" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-9",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "A force 'F' acts on a body of mass 'm'. The acceleration of the body depends upon:",
+      "options": [
+        { "id": "a", "text": "volume of the body" },
+        { "id": "b", "text": "density of the body" },
+        { "id": "c", "text": "area of the body" },
+        { "id": "d", "text": "mass of the body" }
+      ],
+      "answer": "d",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-10",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "Force remaining constant, if the mass of a body increases, its acceleration is likely to:",
+      "options": [
+        { "id": "a", "text": "increase" },
+        { "id": "b", "text": "remain the same" },
+        { "id": "c", "text": "decrease" },
+        { "id": "d", "text": "sometimes increase and sometimes decrease" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-11",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "A force produces an acceleration 'a' in a body. The same force produces an acceleration '4a' in another body. The mass of the other body is:",
+      "options": [
+        { "id": "a", "text": "four times the mass of the first body" },
+        { "id": "b", "text": "four times less than the mass of the first body" },
+        { "id": "c", "text": "mass does not play a role" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-12",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "When a running motorbike accelerates suddenly, the pillion rider has a tendency to fall backward. This is an example of:",
+      "options": [
+        { "id": "a", "text": "Newton's first law of motion" },
+        { "id": "b", "text": "Newton's second law of motion" },
+        { "id": "c", "text": "Newton's third law of motion" },
+        { "id": "d", "text": "Newton's law of gravitation" }
+      ],
+      "answer": "a",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-13",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "A force F acts on a stationary body for a time t. The distance S covered by the body will be proportional to:",
+      "options": [
+        { "id": "a", "text": "t" },
+        { "id": "b", "text": "1/t" },
+        { "id": "c", "text": "t²" },
+        { "id": "d", "text": "1/t²" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Option text reconstructed — the pasted options were garbled. Physics: S = ½(F/m)t², so S ∝ t² (C). Verify option wording against the source."
+    },
+    {
+      "ref": "9-phy-flm-14",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The impact which a body can produce due to the combined effect of mass and velocity is called:",
+      "options": [
+        { "id": "a", "text": "momentum" },
+        { "id": "b", "text": "force" },
+        { "id": "c", "text": "moment of force" },
+        { "id": "d", "text": "pressure" }
+      ],
+      "answer": "a",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-15",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The SI unit of momentum is:",
+      "options": [
+        { "id": "a", "text": "newton" },
+        { "id": "b", "text": "newton-second" },
+        { "id": "c", "text": "dyne" },
+        { "id": "d", "text": "dyne-second" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Answer was MISSING from the pasted answer key. Inferred as (B) newton-second, since momentum = kg·m/s = N·s. Confirm against the source."
+    },
+    {
+      "ref": "9-phy-flm-16",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The tendency of a body to continue in its state of rest or uniform motion, even on the application of an external force, is called:",
+      "options": [
+        { "id": "a", "text": "force" },
+        { "id": "b", "text": "momentum" },
+        { "id": "c", "text": "inertia" },
+        { "id": "d", "text": "impulse" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-17",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "'The tendency of a body to continue in its state of rest or uniform motion even on the application of an external force.' This statement represents:",
+      "options": [
+        { "id": "a", "text": "Newton's second law of motion" },
+        { "id": "b", "text": "Newton's first law of motion" },
+        { "id": "c", "text": "Newton's third law of motion" },
+        { "id": "d", "text": "law of conservation of momentum" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-18",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The magnitude of inertia of a body is determined by its:",
+      "options": [
+        { "id": "a", "text": "mass" },
+        { "id": "b", "text": "weight" },
+        { "id": "c", "text": "velocity" },
+        { "id": "d", "text": "acceleration" }
+      ],
+      "answer": "a",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-19",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "Momentum is a:",
+      "options": [
+        { "id": "a", "text": "vector quantity" },
+        { "id": "b", "text": "scalar quantity" },
+        { "id": "c", "text": "fundamental quantity" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "a",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-20",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "A body P has mass 2m and velocity 5v. Another body Q has mass 8m and velocity 1.25v. The ratio of the momentum of P to that of Q is:",
+      "options": [
+        { "id": "a", "text": "2 : 1" },
+        { "id": "b", "text": "1 : 1" },
+        { "id": "c", "text": "1 : 2" },
+        { "id": "d", "text": "3 : 2" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Option (A) wording reconstructed (pasted as garbled). Physics: p_P = 2m·5v = 10mv, p_Q = 8m·1.25v = 10mv → 1:1 (B)."
+    },
+    {
+      "ref": "9-phy-flm-21",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The magnitude of a physical quantity is 8.5 N·s. The physical quantity is:",
+      "options": [
+        { "id": "a", "text": "force" },
+        { "id": "b", "text": "momentum" },
+        { "id": "c", "text": "pressure" },
+        { "id": "d", "text": "moment of force" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-22",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "There is a rubber ball and a stone ball of the same size. If both balls are at rest:",
+      "options": [
+        { "id": "a", "text": "the rubber ball has more inertia than the stone ball" },
+        { "id": "b", "text": "the stone ball has more inertia than the rubber ball" },
+        { "id": "c", "text": "both have the same inertia" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-23",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "When we vigorously shake a branch of a tree, some leaves get detached. This is due to the:",
+      "options": [
+        { "id": "a", "text": "inertia of rest" },
+        { "id": "b", "text": "inertia of motion" },
+        { "id": "c", "text": "inertia of direction" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "a",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-24",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "When the driver of a fast moving car suddenly applies the brakes, the passengers in the car:",
+      "options": [
+        { "id": "a", "text": "fall backward" },
+        { "id": "b", "text": "fall forward" },
+        { "id": "c", "text": "are not affected" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-25",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "A spaceship continues moving in space with uniform speed because:",
+      "options": [
+        { "id": "a", "text": "no force of friction due to air acts on it" },
+        { "id": "b", "text": "no force of friction due to the earth acts on it" },
+        { "id": "c", "text": "no force of gravitation acts on it" },
+        { "id": "d", "text": "its mass is zero in space" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-26",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "A batsman hits a cricket ball, which then rolls on level ground. After covering a short distance, the ball comes to rest. The ball slows down to a stop because:",
+      "options": [
+        { "id": "a", "text": "the batsman did not hit the ball hard" },
+        { "id": "b", "text": "the velocity of the ball is proportional to the force acting on it" },
+        { "id": "c", "text": "there is a force on the ball opposing its motion" },
+        { "id": "d", "text": "there is no unbalanced force on the ball and hence it comes to rest" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-27",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The force on a freely falling body is directly proportional to:",
+      "options": [
+        { "id": "a", "text": "mass of the body" },
+        { "id": "b", "text": "acceleration of the body" },
+        { "id": "c", "text": "velocity of the body" },
+        { "id": "d", "text": "both (A) and (B)" }
+      ],
+      "answer": "d",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-28",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The principle of conservation of linear momentum states that, in a system, the momentum:",
+      "options": [
+        { "id": "a", "text": "cannot be changed" },
+        { "id": "b", "text": "can be changed if internal forces act on it" },
+        { "id": "c", "text": "can be changed if an external force acts on it" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "a",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Client answer key marks (A). Strictly, momentum is conserved only when no external force acts (option C is the more precise statement). Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-29",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "Action and reaction forces:",
+      "options": [
+        { "id": "a", "text": "act on the same body" },
+        { "id": "b", "text": "act on different bodies" },
+        { "id": "c", "text": "act along different lines" },
+        { "id": "d", "text": "act in the same direction" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-30",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "A porter is carrying a weight of 200 N on his head. If the force exerted on his head is taken as the action, then the reaction force is exerted by:",
+      "options": [
+        { "id": "a", "text": "the head on the weight" },
+        { "id": "b", "text": "the weight on the earth" },
+        { "id": "c", "text": "the earth on the porter" },
+        { "id": "d", "text": "the earth on the weight" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Client answer key marks (C). By Newton's third law, the reaction to the weight pressing down on the head is the head pushing up on the weight (A). Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-31",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "Which of the following are vector quantities?",
+      "options": [
+        { "id": "a", "text": "momentum" },
+        { "id": "b", "text": "velocity" },
+        { "id": "c", "text": "force" },
+        { "id": "d", "text": "all of the above" }
+      ],
+      "answer": "d",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-32",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "Two bodies collide. Which of the following is always conserved?",
+      "options": [
+        { "id": "a", "text": "velocity" },
+        { "id": "b", "text": "momentum" },
+        { "id": "c", "text": "kinetic energy" },
+        { "id": "d", "text": "force" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Client answer key marks (C). Physically, momentum (B) is conserved in all collisions; kinetic energy is conserved only in elastic collisions. Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-33",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "Impulse is equal to:",
+      "options": [
+        { "id": "a", "text": "the change in velocity" },
+        { "id": "b", "text": "the change in momentum" },
+        { "id": "c", "text": "the change in acceleration" },
+        { "id": "d", "text": "all the above" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-34",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "A rocket works on the principle of:",
+      "options": [
+        { "id": "a", "text": "conservation of energy" },
+        { "id": "b", "text": "conservation of linear momentum" },
+        { "id": "c", "text": "conservation of inertia" },
+        { "id": "d", "text": "conservation of force" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-35",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "When a speeding car takes a sharp turn, the persons sitting in it experience an outward pull. This happens due to:",
+      "options": [
+        { "id": "a", "text": "inertia of motion" },
+        { "id": "b", "text": "change in momentum" },
+        { "id": "c", "text": "change in acceleration" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "a",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-36",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The ratio of force to acceleration of a moving body is a measure of its:",
+      "options": [
+        { "id": "a", "text": "velocity" },
+        { "id": "b", "text": "momentum" },
+        { "id": "c", "text": "mass" },
+        { "id": "d", "text": "impulse" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-37",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "When you kick a stone, you get hurt. Due to which property does this happen?",
+      "options": [
+        { "id": "a", "text": "inertia of the stone" },
+        { "id": "b", "text": "velocity of the kick" },
+        { "id": "c", "text": "momentum of the kick" },
+        { "id": "d", "text": "reaction of the stone" }
+      ],
+      "answer": "d",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-38",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "A motorbike accelerates on a horizontal road due to the force exerted by:",
+      "options": [
+        { "id": "a", "text": "the engine of the motorbike" },
+        { "id": "b", "text": "the earth (road)" },
+        { "id": "c", "text": "the driver on the motorbike" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-39",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "Impulse has the same unit as that of:",
+      "options": [
+        { "id": "a", "text": "force" },
+        { "id": "b", "text": "pressure" },
+        { "id": "c", "text": "momentum" },
+        { "id": "d", "text": "moment of force" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-40",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "By Newton's second law, the physical quantity which can be calculated if we know the magnitude of the force on a given mass is:",
+      "options": [
+        { "id": "a", "text": "velocity" },
+        { "id": "b", "text": "momentum" },
+        { "id": "c", "text": "acceleration" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Client answer key marks (B). From F = ma, knowing F and m gives acceleration (C). Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-41",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "A body is moving with constant momentum. The motion of the body is:",
+      "options": [
+        { "id": "a", "text": "uniform velocity" },
+        { "id": "b", "text": "accelerated" },
+        { "id": "c", "text": "decelerated" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "d",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Client answer key marks (D). For constant mass, constant momentum implies uniform velocity (A). Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-42",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "A cracker at rest explodes into two equal parts. These parts will move in:",
+      "options": [
+        { "id": "a", "text": "opposite directions with the same speed" },
+        { "id": "b", "text": "the same direction with different velocities" },
+        { "id": "c", "text": "the same direction with the same velocity" },
+        { "id": "d", "text": "opposite directions with equal speeds" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Options were garbled in the paste (two 'same direction' entries). Client answer key marks (C), but by momentum conservation two equal parts from rest move in opposite directions with equal speeds (A/D). Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-43",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "A batsman has a choice to use a heavy or a light bat while facing a fast bowler. He will prefer:",
+      "options": [
+        { "id": "a", "text": "a light bat, because handling it is easy" },
+        { "id": "b", "text": "a heavy bat, so that he can handle it firmly" },
+        { "id": "c", "text": "a heavy bat, because it will recoil less" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"]
+    },
+    {
+      "ref": "9-phy-flm-44",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "hard",
+      "body": "A vehicle has a mass of 1500 kg. If the vehicle is to be stopped with a negative acceleration of 1.7 m/s², the force of friction between the vehicle and the road is:",
+      "options": [
+        { "id": "a", "text": "-2550 N" },
+        { "id": "b", "text": "-2050 N" },
+        { "id": "c", "text": "-2250 N" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "a",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Option (A) value reconstructed. F = ma = 1500 × (-1.7) = -2550 N (A). The pasted options listed -2250 twice. Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-45",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "hard",
+      "body": "A man, while running at a constant acceleration of 3.5 m/s², develops a force of 280 N. The mass of the man is:",
+      "options": [
+        { "id": "a", "text": "80 kg" },
+        { "id": "b", "text": "85 kg" },
+        { "id": "c", "text": "75 kg" },
+        { "id": "d", "text": "60 kg" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Client answer key marks (C) 75 kg, but m = F/a = 280/3.5 = 80 kg, which is option (A). Likely an error in the answer key. Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-46",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "hard",
+      "body": "The mass of an aeroplane is 2.5 t. Its engine develops a force of 8750 N for taking off. The acceleration of the aeroplane at the time of take off is:",
+      "options": [
+        { "id": "a", "text": "3.45 m/s²" },
+        { "id": "b", "text": "3.65 m/s²" },
+        { "id": "c", "text": "3.50 m/s²" },
+        { "id": "d", "text": "3.60 m/s²" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"],
+      "explanation": "a = F/m = 8750 / 2500 = 3.5 m/s² (C)."
+    },
+    {
+      "ref": "9-phy-flm-47",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "hard",
+      "body": "A horse, while running at a constant velocity of 15 m/s, develops a momentum of 300 N·s. The mass of the horse is:",
+      "options": [
+        { "id": "a", "text": "180 kg" },
+        { "id": "b", "text": "300 kg" },
+        { "id": "c", "text": "200 kg" },
+        { "id": "d", "text": "250 kg" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Client answer key marks (B), but m = p/v = 300/15 = 20 kg, which is not among the options. The question's numbers or options appear corrupted in the paste. Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-48",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "hard",
+      "body": "A boy of mass 30 kg, while running at constant velocity, has a momentum of 180 N·s. The constant velocity of the boy is:",
+      "options": [
+        { "id": "a", "text": "3 m/s" },
+        { "id": "b", "text": "6 m/s" },
+        { "id": "c", "text": "18 m/s" },
+        { "id": "d", "text": "12 m/s" }
+      ],
+      "answer": "a",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Client answer key marks (A) 3 m/s, but v = p/m = 180/30 = 6 m/s, which is option (B). Likely an error in the answer key. Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-49",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "hard",
+      "body": "An electron of mass 9 × 10⁻³¹ kg is moving in a straight line with a velocity of 6 × 10⁷ m/s. The momentum of the electron is:",
+      "options": [
+        { "id": "a", "text": "5.4 × 10⁻²³ N·s" },
+        { "id": "b", "text": "5.4 × 10⁻²⁴ N·s" },
+        { "id": "c", "text": "4.5 × 10⁻²³ N·s" },
+        { "id": "d", "text": "0.5 × 10⁻²⁴ N·s" }
+      ],
+      "answer": "d",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Client answer key marks (D), but p = mv = 9e-31 × 6e7 = 5.4 × 10⁻²³ N·s, which is option (A). Likely an error in the answer key. Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-50",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "hard",
+      "body": "A bullet of mass 0.10 kg is fired from a rifle. The bullet takes 0.003 s to move through the barrel and leaves with a velocity of 300 m/s. The acceleration acting on the bullet is:",
+      "options": [
+        { "id": "a", "text": "10,000 m/s²" },
+        { "id": "b", "text": "100,000 m/s²" },
+        { "id": "c", "text": "1,000,000 m/s²" },
+        { "id": "d", "text": "100 m/s²" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1", "needs-review"],
+      "explanation": "Option (B) value reconstructed from a garbled paste. a = v/t = 300 / 0.003 = 100,000 m/s² (B). Verify option wording against the source."
+    },
+    {
+      "ref": "9-phy-flm-51",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "hard",
+      "body": "A truck starts from rest and rolls down a hill with constant acceleration. It travels 400 m in 20 s. If the mass of the truck is 7 metric tonnes, the force acting on it is:",
+      "options": [
+        { "id": "a", "text": "28,000 N" },
+        { "id": "b", "text": "14,000 N" },
+        { "id": "c", "text": "1,400 N" },
+        { "id": "d", "text": "24,000 N" }
+      ],
+      "answer": "b",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"],
+      "explanation": "s = ½at² → 400 = ½·a·400 → a = 2 m/s²; F = ma = 7000 × 2 = 14,000 N (B)."
+    },
+    {
+      "ref": "9-phy-flm-52",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "hard",
+      "body": "An 8000 kg engine pulls a train of 5 wagons, each of 2000 kg, along a horizontal track. If the engine exerts a force of 40,000 N and the track offers a friction of 5000 N, then the net accelerating force acting on the system is:",
+      "options": [
+        { "id": "a", "text": "45,000 N" },
+        { "id": "b", "text": "40,000 N" },
+        { "id": "c", "text": "35,000 N" },
+        { "id": "d", "text": "none of the above" }
+      ],
+      "answer": "c",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-1"],
+      "explanation": "Net accelerating force = applied force − friction = 40,000 − 5000 = 35,000 N (C)."
+    },
+    {
+      "ref": "9-phy-flm-e2-1",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "medium",
+      "body": "A constant force acts on an object of mass 5 kg for a duration of 2 s. It increases the object's velocity from 3 m/s to 7 m/s. Find the magnitude of the applied force. If the same force were applied for a duration of 5 s, what would be the final velocity of the object?",
+      "answer": "a = (7 − 3)/2 = 2 m/s²; F = ma = 5 × 2 = 10 N. For t = 5 s: v = u + at = 3 + 2 × 5 = 13 m/s.",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"]
+    },
+    {
+      "ref": "9-phy-flm-e2-2",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "easy",
+      "body": "Which would require a greater force — accelerating a 2 kg mass at 5 m/s² or a 4 kg mass at 2 m/s²?",
+      "answer": "F₁ = 2 × 5 = 10 N; F₂ = 4 × 2 = 8 N. Accelerating the 2 kg mass at 5 m/s² requires the greater force (10 N).",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2", "needs-review"],
+      "explanation": "Second mass reconstructed as '4 kg at 2 m/s²' (the paste was garbled as 'a kg mass at 2 m/s'). Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-e2-3",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "medium",
+      "body": "A motorcar is moving with a velocity of 108 km/h and it takes 4 s to stop after the brakes are applied. Calculate the force exerted by the brakes on the motorcar if its mass, along with the passengers, is 1000 kg.",
+      "answer": -7500,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"],
+      "explanation": "108 km/h = 30 m/s; a = (0 − 30)/4 = −7.5 m/s²; F = 1000 × (−7.5) = −7500 N."
+    },
+    {
+      "ref": "9-phy-flm-e2-4",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "medium",
+      "body": "A force of 5 N gives a mass m₁ an acceleration of 10 m/s² and a mass m₂ an acceleration of 20 m/s². What acceleration would it give if both masses were tied together?",
+      "answer": 6.67,
+      "tolerance": 0.02,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"],
+      "explanation": "m₁ = 5/10 = 0.5 kg, m₂ = 5/20 = 0.25 kg; combined = 0.75 kg; a = 5/0.75 = 6.67 m/s²."
+    },
+    {
+      "ref": "9-phy-flm-e2-5",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "medium",
+      "body": "The velocity–time graph of a ball of mass 2 g moving along a straight line on a long table is given (Fig. 9.9). How much force does the table exert on the ball to bring it to rest?",
+      "answer": "Force = mass × deceleration read from the v–t graph. Per the answer key the magnitude is about 0.0004 N (directed opposite to motion).",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2", "needs-review"],
+      "explanation": "The referenced velocity–time graph (Fig. 9.9) was not included in the paste, so the value cannot be verified. The answer key wrote the unit as 'm' (−0.0004 m), which should be N. Supply the graph to confirm."
+    },
+    {
+      "ref": "9-phy-flm-e2-6",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "medium",
+      "body": "A bullet of mass 20 g is fired horizontally with a velocity of 150 m/s from a pistol of mass 2 kg. What is the recoil velocity of the pistol?",
+      "answer": -1.5,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"],
+      "explanation": "Conservation of momentum: 0.02 × 150 = 2 × v → v = −1.5 m/s."
+    },
+    {
+      "ref": "9-phy-flm-e2-7",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "medium",
+      "body": "A girl of mass 40 kg jumps with a horizontal velocity of 5 m/s onto a stationary cart with frictionless wheels. The mass of the cart is 3 kg. What is her velocity as the cart starts moving? Assume there is no external unbalanced force in the horizontal direction.",
+      "answer": 4.65,
+      "tolerance": 0.02,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"],
+      "explanation": "40 × 5 = (40 + 3) × v → v = 200/43 = 4.65 m/s."
+    },
+    {
+      "ref": "9-phy-flm-e2-8",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "hard",
+      "body": "Two hockey players of opposite teams, while trying to hit a hockey ball on the ground, collide and immediately become entangled. One has a mass of 60 kg and was moving with a velocity of 5.0 m/s, while the other has a mass of 55 kg and was moving with a velocity of 6.0 m/s towards the first player. In which direction and with what velocity will they move after becoming entangled? Assume friction between the players' feet and the ground is negligible.",
+      "answer": -0.26,
+      "tolerance": 0.02,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"],
+      "explanation": "Taking the first player's direction as positive: 60 × 5 − 55 × 6 = 300 − 330 = −30 kg·m/s; total mass = 115 kg; v = −30/115 = −0.26 m/s, i.e. in the direction the second (55 kg) player was moving."
+    },
+    {
+      "ref": "9-phy-flm-e2-9",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "medium",
+      "body": "A body of mass 300 g is at rest. What force (in newton) must you apply to move it through 200 cm in 10 s?",
+      "answer": 0.012,
+      "tolerance": 0.001,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2", "needs-review"],
+      "explanation": "s = ½at² → 2 = ½·a·100 → a = 0.04 m/s²; F = 0.3 × 0.04 = 0.012 N. The pasted answer key ('0.12 m/s') is wrong in both value and unit — verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-e2-10",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "medium",
+      "body": "A boat of mass 3000 kg, initially at rest, is pulled by a force of 1.8 × 10⁴ N through a distance of 3 m. Assuming the resistance due to water is negligible, what is the velocity of the boat?",
+      "answer": 6,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"],
+      "explanation": "a = F/m = 18000/3000 = 6 m/s²; v² = 2as = 2 × 6 × 3 = 36 → v = 6 m/s."
+    },
+    {
+      "ref": "9-phy-flm-e2-11",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "hard",
+      "body": "A 40 kg slab rests on a frictionless floor. A 10 kg block rests on top of the slab. The static coefficient of friction between the block and the slab is 0.60, while the kinetic coefficient is 0.40. The 10 kg block is acted upon by a horizontal force of 100 N. Taking g = 9.8 m/s², what is the resulting acceleration of the slab?",
+      "answer": 0.98,
+      "tolerance": 0.02,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"],
+      "explanation": "The block slides, so the slab is driven only by kinetic friction: f = μk·m_block·g = 0.40 × 10 × 9.8 = 39.2 N; a_slab = f/m_slab = 39.2/40 = 0.98 m/s²."
+    },
+    {
+      "ref": "9-phy-flm-e2-12",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "medium",
+      "body": "A stone of mass 1 kg is thrown with a velocity of 20 m/s across the frozen surface of a lake and comes to rest after travelling a distance of 50 m. What is the force of friction between the stone and the ice?",
+      "answer": -4,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"],
+      "explanation": "a = −v²/(2s) = −400/100 = −4 m/s²; F = 1 × (−4) = −4 N."
+    },
+    {
+      "ref": "9-phy-flm-e2-13",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "hard",
+      "body": "An 8000 kg engine pulls a train of 5 wagons, each of 2000 kg, along a horizontal track. If the engine exerts a force of 40,000 N and the track offers a friction force of 5000 N, calculate: (a) the net accelerating force, (b) the acceleration of the train, and (c) the force of wagon 1 on wagon 2.",
+      "answer": "(a) Net accelerating force = 40,000 − 5000 = 35,000 N. (b) Acceleration of the train = 35,000 / 10,000 = 3.5 m/s² (taking the 5 wagons, 5 × 2000 = 10,000 kg, as the train being pulled). (c) Force of wagon 1 on wagon 2 = mass of wagons 2–5 × a = (4 × 2000) × 3.5 = 28,000 N.",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2", "needs-review"],
+      "explanation": "Matches the answer key (35,000 N; 3.5 m/s²; 28,000 N). Note the key computes acceleration from the wagons' mass (10,000 kg) only; including the engine (18,000 kg) would give 1.94 m/s². Confirm the intended interpretation."
+    },
+    {
+      "ref": "9-phy-flm-e2-14",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "medium",
+      "body": "An automobile of mass 1500 kg is to be stopped with a negative acceleration of 1.7 m/s². What must be the force between the vehicle and the road?",
+      "answer": "F = ma = 1500 × 1.7 = 2550 N, directed opposite to the motion of the vehicle.",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"]
+    },
+    {
+      "ref": "9-phy-flm-e2-15",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "What is the momentum of an object of mass m moving with a velocity v?",
+      "options": [
+        { "id": "a", "text": "(mv)²" },
+        { "id": "b", "text": "mv²" },
+        { "id": "c", "text": "½mv²" },
+        { "id": "d", "text": "mv" }
+      ],
+      "answer": "d",
+      "marks": 4,
+      "negativeMarks": 1,
+      "tags": ["exercise-2"]
+    },
+    {
+      "ref": "9-phy-flm-e2-16",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "medium",
+      "body": "Two objects, each of mass 1.5 kg, are moving in the same straight line but in opposite directions. The velocity of each object is 2.5 m/s before the collision, during which they stick together. What will be the velocity of the combined object after the collision?",
+      "answer": 0,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"],
+      "explanation": "Equal and opposite momenta cancel: 1.5 × 2.5 − 1.5 × 2.5 = 0; combined velocity = 0 m/s."
+    },
+    {
+      "ref": "9-phy-flm-e2-17",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "medium",
+      "body": "A hockey ball of mass 200 g travelling at 10 m/s is struck by a hockey stick so as to return along its original path with a velocity of 5 m/s. Calculate the change of momentum that occurs in the motion of the hockey ball due to the force applied by the hockey stick.",
+      "answer": "Δp = m(v − u) = 0.2 × (−5 − 10) = −3 kg·m/s; magnitude = 3 kg·m/s, directed opposite to the original motion.",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"]
+    },
+    {
+      "ref": "9-phy-flm-e2-18",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "hard",
+      "body": "A bullet of mass 100 g travelling horizontally with a velocity of 150 m/s strikes a stationary wooden block and comes to rest in 0.03 s. Calculate the distance of penetration of the bullet into the block. Also calculate the magnitude of the force exerted by the wooden block on the bullet.",
+      "answer": "a = (0 − 150)/0.03 = −5000 m/s²; distance s = ut + ½at² = 150 × 0.03 − ½ × 5000 × 0.03² = 4.5 − 2.25 = 2.25 m; F = ma = 0.1 × 5000 = 500 N.",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2", "needs-review"],
+      "explanation": "Distance 2.25 m matches the key. The pasted key states the force as '50 N', but F = 0.1 × 5000 = 500 N — likely a dropped zero. Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-e2-19",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "medium",
+      "body": "An object of mass 1 kg travelling in a straight line with a velocity of 10 m/s collides with, and sticks to, a stationary wooden block of mass 5 kg. They then move off together in the same straight line. Calculate the total momentum just before and just after the impact, and the velocity of the combined object.",
+      "answer": "Momentum before = 1 × 10 = 10 kg·m/s; momentum after (conserved) = 10 kg·m/s; combined mass = 6 kg → velocity = 10/6 = 1.67 m/s.",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2", "needs-review"],
+      "explanation": "The pasted answer key gives the two momenta (10, 10 kg·m/s) but the final velocity value was missing; computed as 1.67 m/s. Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-e2-20",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "medium",
+      "body": "An object of mass 100 kg is accelerated uniformly from a velocity of 5 m/s to 8 m/s in 6 s. Calculate the initial and final momentum of the object, and the magnitude of the force exerted on the object.",
+      "answer": "p_initial = 100 × 5 = 500 kg·m/s; p_final = 100 × 8 = 800 kg·m/s; F = (800 − 500)/6 = 50 N.",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2", "needs-review"],
+      "explanation": "The final velocity (8 m/s) was missing from the pasted question but is implied by the answer key (final momentum 800 kg·m/s). Verify against the source."
+    },
+    {
+      "ref": "9-phy-flm-e2-21",
+      "chapter": "Force and Laws of Motion",
+      "type": "numerical",
+      "difficulty": "medium",
+      "body": "How much momentum will a dumb-bell of mass 10 kg transfer to the floor if it falls from a height of 80 cm? Take its downward acceleration to be 10 m/s².",
+      "answer": 40,
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"],
+      "explanation": "v = √(2 × 10 × 0.8) = 4 m/s; momentum transferred = 10 × 4 = 40 kg·m/s."
+    },
+    {
+      "ref": "9-phy-flm-e2-22",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "easy",
+      "body": "An object experiences a net zero external unbalanced force. Is it possible for the object to be travelling with a non-zero velocity? If yes, state the conditions that must be placed on the magnitude and direction of the velocity. If no, provide a reason.",
+      "answer": "Yes. By Newton's first law, with zero net force a body moves with constant velocity — so the velocity must be constant in both magnitude and direction (uniform motion in a straight line).",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"]
+    },
+    {
+      "ref": "9-phy-flm-e2-23",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "easy",
+      "body": "When a carpet is beaten with a stick, dust comes out of it. Explain.",
+      "answer": "Beating suddenly sets the carpet in motion, but the dust particles, due to their inertia of rest, tend to remain in place. The carpet moves away while the dust stays behind, so it separates and falls out.",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"]
+    },
+    {
+      "ref": "9-phy-flm-e2-24",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "easy",
+      "body": "Why is it advised to tie any luggage kept on the roof of a bus with a rope?",
+      "answer": "When the bus suddenly starts, stops or turns, the luggage tends to continue in its previous state of rest or motion due to inertia and may slide or fall off. The rope supplies the external force needed to keep it in place.",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"]
+    },
+    {
+      "ref": "9-phy-flm-e2-25",
+      "chapter": "Force and Laws of Motion",
+      "type": "subjective",
+      "difficulty": "easy",
+      "body": "Explain, with an example each, Newton's first, second and third laws of motion.",
+      "answer": "First law (law of inertia): a body remains at rest or in uniform motion unless acted on by an external force — e.g. passengers lurch forward when a moving bus brakes suddenly. Second law: the rate of change of momentum is proportional to the applied force, F = ma — e.g. a cricketer draws his hands back while catching a ball to increase the time of contact and reduce the force. Third law: every action has an equal and opposite reaction — e.g. the recoil of a gun when a bullet is fired, or a swimmer pushing water backward to move forward.",
+      "marks": 4,
+      "negativeMarks": 0,
+      "tags": ["exercise-2"]
+    }
+  ]
+}

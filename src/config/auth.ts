@@ -1,76 +1,44 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { phoneNumber, bearer } from 'better-auth/plugins'
-import { Resend } from 'resend'
 import { db } from '../shared/db.js'
 import { env } from './env.js'
 import { users, sessions, accounts, verifications } from '../modules/auth/auth.schema.js'
+import { sendEmail } from '../modules/notification/channels/email.channel.js'
 
-const resend = new Resend(env.RESEND_API_KEY)
+// In dev, sendEmail() routes to Mailpit (http://localhost:8025 web UI). If
+// Mailpit isn't running the send throws — we log the URL as a fallback so the
+// signup flow can still be completed manually instead of being a dead end.
+async function sendWithFallback(label: string, to: string, subject: string, html: string, url: string): Promise<void> {
+  try {
+    await sendEmail({ to, subject, html })
+  } catch (err) {
+    console.error(`[auth] ${label} email send failed for ${to}:`, err)
+    if (env.NODE_ENV !== 'production') {
+      const divider = '-'.repeat(72)
+      console.log(`\n${divider}\n${label} FALLBACK (open this URL manually)\nTo:  ${to}\nURL: ${url}\n${divider}\n`)
+    }
+  }
+}
 
 async function sendVerificationEmail(userEmail: string, url: string): Promise<void> {
-  if (env.NODE_ENV !== 'production') {
-    let consoleUrl = url
-    try {
-      const parsedUrl = new URL(url)
-      parsedUrl.protocol = 'http:'
-      parsedUrl.hostname = '127.0.0.1'
-      parsedUrl.port = '8000'
-      consoleUrl = parsedUrl.toString()
-    } catch {
-      // Keep original URL if parsing fails.
-    }
-
-    // Keep this on stdout so it is visible in most local consoles/IDEs.
-    const divider = '-'.repeat(72)
-    console.log(
-      `\n${divider}\n` +
-        `EMAIL VERIFICATION (dev - not sent)\n` +
-        `To:  ${userEmail}\n` +
-        `URL: ${consoleUrl}\n` +
-        `${divider}\n`,
-    )
-    return
-  }
-  const { error } = await resend.emails.send({
-    from: `Gyanverse <noreply@${env.APP_DOMAIN}>`,
-    to: userEmail,
-    subject: 'Verify your Gyanverse email',
-    html: `<p>Click <a href="${url}">this link</a> to verify your email. It expires in 1 hour.</p><p>Ignore this if you didn't sign up.</p>`,
-  })
-  if (error) console.error('[Resend] Failed to send verification email:', error)
+  await sendWithFallback(
+    'EMAIL VERIFICATION',
+    userEmail,
+    'Verify your Gyanverse email',
+    `<p>Click <a href="${url}">this link</a> to verify your email. It expires in 1 hour.</p><p>Ignore this if you didn't sign up.</p>`,
+    url,
+  )
 }
 
 async function sendPasswordResetEmail(userEmail: string, url: string): Promise<void> {
-  if (env.NODE_ENV !== 'production') {
-    let consoleUrl = url
-    try {
-      const parsedUrl = new URL(url)
-      parsedUrl.protocol = 'http:'
-      parsedUrl.hostname = '127.0.0.1'
-      parsedUrl.port = '8000'
-      consoleUrl = parsedUrl.toString()
-    } catch {
-      // Keep original URL if parsing fails.
-    }
-
-    const divider = '-'.repeat(72)
-    console.log(
-      `\n${divider}\n` +
-        `PASSWORD RESET (dev - not sent)\n` +
-        `To:  ${userEmail}\n` +
-        `URL: ${consoleUrl}\n` +
-        `${divider}\n`,
-    )
-    return
-  }
-  const { error } = await resend.emails.send({
-    from: `Gyanverse <noreply@${env.APP_DOMAIN}>`,
-    to: userEmail,
-    subject: 'Reset your Gyanverse password',
-    html: `<p>Click <a href="${url}">this link</a> to reset your password. It expires in 1 hour.</p><p>Ignore this if you didn't request a reset.</p>`,
-  })
-  if (error) console.error('[Resend] Failed to send password reset email:', error)
+  await sendWithFallback(
+    'PASSWORD RESET',
+    userEmail,
+    'Reset your Gyanverse password',
+    `<p>Click <a href="${url}">this link</a> to reset your password. It expires in 1 hour.</p><p>Ignore this if you didn't request a reset.</p>`,
+    url,
+  )
 }
 
 async function sendMsg91Otp(phone: string, code: string): Promise<void> {
@@ -85,11 +53,19 @@ async function sendMsg91Otp(phone: string, code: string): Promise<void> {
 const trustedOrigins =
   env.NODE_ENV !== 'production'
     ? [
+        // lvh.me is a public domain whose wildcard DNS points at 127.0.0.1.
+        // Used instead of *.localhost because Chromium treats localhost as a
+        // public suffix and rejects cross-subdomain cookies — see the
+        // crossSubDomainCookies note below.
+        'http://app.lvh.me:3000',
+        'http://app.lvh.me:8000',
+        'http://*.lvh.me:3000',
+        'http://*.lvh.me:8000',
+        // Bare localhost entries kept for tooling that hits the API directly
+        // (curl, Bull Board at /queues, etc.). The app itself runs on lvh.me.
         'http://localhost:3000',
-        'http://localhost:5173',
         'http://localhost:8000',
         'http://127.0.0.1:3000',
-        'http://127.0.0.1:5173',
         'http://127.0.0.1:8000',
       ]
     : [`https://${env.APP_DOMAIN}`, `https://*.${env.APP_DOMAIN}`]
@@ -109,6 +85,30 @@ export const auth = betterAuth({
       // Better Auth's default ID generator produces nanoids, which are not valid UUIDs.
       // All pk columns are uuid type, so we must generate UUIDs here.
       generateId: () => crypto.randomUUID(),
+    },
+    // Share the session cookie across all tenant subdomains.
+    //   dev:  Domain=lvh.me        → cookie is sent to *.lvh.me and lvh.me
+    //   prod: Domain=gyanverse.com → cookie is sent to *.gyanverse.com and gyanverse.com
+    //
+    // Why lvh.me in dev (not localhost)? Chromium treats `localhost` as a public
+    // suffix (TLD-like). Per RFC 6265 §5.3 step 5, a Set-Cookie with Domain set
+    // to a public suffix is REJECTED entirely when the response host differs
+    // from that domain. So `app.localhost:8000` setting `Domain=localhost` was
+    // silently dropped by the browser. `lvh.me` is a regular registered domain
+    // whose wildcard DNS resolves to 127.0.0.1 — no public-suffix quirk.
+    //
+    // Combined with SameSite=Lax (Better Auth default), a user who logs in at the
+    // root then top-level-navigates to <slug>.<root> keeps their session, and any
+    // same-site fetch from <slug>.<root>:3000 → <slug>.<root>:8000 also carries it.
+    //
+    // Security note (per Better Auth guidance): this gives every subdomain of the
+    // configured root read access to the auth cookie. We control the whole zone
+    // (tenant subdomains are all our app), so this is acceptable. If we ever host
+    // an untrusted service at *.gyanverse.com (status pages, partner widgets, etc.)
+    // it MUST be moved to a separate domain.
+    crossSubDomainCookies: {
+      enabled: true,
+      domain: env.NODE_ENV !== 'production' ? 'lvh.me' : env.APP_DOMAIN,
     },
   },
 

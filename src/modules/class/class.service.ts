@@ -1,10 +1,11 @@
-import { eq, and, sql, desc } from 'drizzle-orm'
+import { eq, and, sql, desc, inArray } from 'drizzle-orm'
 import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
 import { classes, classMembers, joinCodes, CLASS_CODE_CHARS } from './class.schema.js'
 import { memberships } from '../membership/membership.schema.js'
 import { users } from '../auth/auth.schema.js'
 import { assertWithinLimit } from '../billing/billing.service.js'
+import { dispatch } from '@modules/notification/index.js'
 
 // ── Class CRUD ──────────────────────────────────────────────────────────────
 
@@ -31,6 +32,52 @@ export async function createClass(data: {
     .returning()
 
   return cls
+}
+
+/**
+ * Owner-only: move a batch to a different teacher. The new owner must be a
+ * teacher (or the coaching owner) who belongs to THIS tenant. Kept separate
+ * from `updateClass` so a teacher can never reassign a class away from
+ * themselves — this path is gated to `coaching_owner` at the route level.
+ */
+export async function reassignClassTeacher(
+  classId: string,
+  tenantId: string,
+  newTeacherId: string,
+) {
+  const cls = await getClass(classId, tenantId)
+  if (!cls) throw Errors.NOT_FOUND('Class')
+
+  const [member] = await db
+    .select({ role: memberships.role })
+    .from(memberships)
+    .where(and(eq(memberships.userId, newTeacherId), eq(memberships.tenantId, tenantId)))
+    .limit(1)
+  if (!member || (member.role !== 'teacher' && member.role !== 'coaching_owner')) {
+    throw new AppError('INVALID_TEACHER', 'The selected user is not a teacher in this coaching', 400)
+  }
+
+  if (cls.teacherId === newTeacherId) return cls
+
+  const [updated] = await db
+    .update(classes)
+    .set({ teacherId: newTeacherId, updatedAt: new Date() })
+    .where(eq(classes.id, classId))
+    .returning()
+
+  // Let the new teacher know the batch is now theirs. Fire-and-forget.
+  void dispatch({
+    type: 'class_update',
+    recipients: { userIds: [newTeacherId] },
+    tenantId,
+    data: {
+      title: 'A batch was assigned to you',
+      body: `You are now the teacher for "${updated.name}".`,
+      link: `/classes/${updated.id}`,
+    },
+  })
+
+  return updated
 }
 
 export async function getClass(id: string, tenantId: string) {
@@ -87,16 +134,62 @@ export async function deleteClass(
   return { success: true }
 }
 
+/**
+ * Enrich class rows with `studentCount` (approved enrollments) and
+ * `pendingCount` (enrollments awaiting approval). One grouped query for the
+ * whole page — no per-class round-trips.
+ */
+async function attachEnrollmentCounts<T extends { id: string }>(
+  rows: T[],
+): Promise<(T & { studentCount: number; pendingCount: number })[]> {
+  if (rows.length === 0) return []
+  const counts = await db
+    .select({
+      classId: classMembers.classId,
+      studentCount: sql<number>`count(*) filter (where ${classMembers.status} = 'approved')`.mapWith(Number),
+      pendingCount: sql<number>`count(*) filter (where ${classMembers.status} = 'pending')`.mapWith(Number),
+    })
+    .from(classMembers)
+    .where(inArray(classMembers.classId, rows.map((r) => r.id)))
+    .groupBy(classMembers.classId)
+
+  const byId = new Map(counts.map((c) => [c.classId, c]))
+  return rows.map((r) => ({
+    ...r,
+    studentCount: byId.get(r.id)?.studentCount ?? 0,
+    pendingCount: byId.get(r.id)?.pendingCount ?? 0,
+  }))
+}
+
 export async function getAllClasses(tenantId: string) {
-  return db.select().from(classes).where(eq(classes.tenantId, tenantId)).orderBy(classes.createdAt)
+  const rows = await db
+    .select({
+      id: classes.id,
+      tenantId: classes.tenantId,
+      teacherId: classes.teacherId,
+      name: classes.name,
+      grade: classes.grade,
+      description: classes.description,
+      autoApprove: classes.autoApprove,
+      createdAt: classes.createdAt,
+      updatedAt: classes.updatedAt,
+      // Owner-only listing shows which teacher owns each batch.
+      teacherName: users.name,
+    })
+    .from(classes)
+    .leftJoin(users, eq(users.id, classes.teacherId))
+    .where(eq(classes.tenantId, tenantId))
+    .orderBy(classes.createdAt)
+  return attachEnrollmentCounts(rows)
 }
 
 export async function getClassesForTeacher(teacherId: string, tenantId: string) {
-  return db
+  const rows = await db
     .select()
     .from(classes)
     .where(and(eq(classes.teacherId, teacherId), eq(classes.tenantId, tenantId)))
     .orderBy(classes.createdAt)
+  return attachEnrollmentCounts(rows)
 }
 
 export async function getClassesForStudent(studentId: string, tenantId: string) {
@@ -283,7 +376,7 @@ export async function useClassJoinCode(userId: string, code: string) {
   }
 
   const [cls] = await db
-    .select({ autoApprove: classes.autoApprove })
+    .select({ autoApprove: classes.autoApprove, teacherId: classes.teacherId, name: classes.name })
     .from(classes)
     .where(eq(classes.id, record.classId))
     .limit(1)
@@ -297,6 +390,18 @@ export async function useClassJoinCode(userId: string, code: string) {
       .update(joinCodes)
       .set({ usedCount: sql`${joinCodes.usedCount} + 1` })
       .where(eq(joinCodes.id, record.id))
+  })
+
+  void dispatch({
+    type: 'class_update',
+    recipients: { userIds: [cls.teacherId] },
+    tenantId: record.tenantId,
+    data: {
+      title: status === 'approved' ? 'New student enrolled' : 'New enrollment request',
+      body: status === 'approved'
+        ? `A student has enrolled in ${cls.name}.`
+        : `A student has requested to join ${cls.name} and is awaiting approval.`,
+    },
   })
 
   return {
@@ -360,6 +465,18 @@ export async function updateEnrollmentStatus(
 
   const newStatus = action === 'approve' ? 'approved' : 'rejected'
   await db.update(classMembers).set({ status: newStatus }).where(eq(classMembers.id, member.id))
+
+  void dispatch({
+    type: 'class_update',
+    recipients: { userIds: [studentId] },
+    tenantId,
+    data: {
+      title: action === 'approve' ? 'Enrollment approved' : 'Enrollment rejected',
+      body: action === 'approve'
+        ? `Your enrollment in ${cls.name} has been approved.`
+        : `Your enrollment request for ${cls.name} was not approved.`,
+    },
+  })
 
   return { success: true, status: newStatus }
 }

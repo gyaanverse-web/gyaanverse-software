@@ -8,6 +8,7 @@ import { memberships } from '../membership/membership.schema.js'
 import { users } from '../auth/auth.schema.js'
 import { tenants } from '../tenant/tenant.schema.js'
 import { assertWithinLimit } from '../billing/billing.service.js'
+import { dispatch } from '@modules/notification/index.js'
 
 const resend = new Resend(env.RESEND_API_KEY)
 
@@ -110,6 +111,26 @@ export async function createInvite(
     await sendInvitePhone(contact, tenant.name, url)
   }
 
+  // Best-effort in-app notification if the invitee already has an account
+  void db
+    .select({ id: users.id })
+    .from(users)
+    .where(contactType === 'email' ? eq(users.email, contact) : eq(users.phoneNumber, contact))
+    .limit(1)
+    .then(([invitee]) => {
+      if (!invitee) return
+      return dispatch({
+        type: 'invite_received',
+        recipients: { userIds: [invitee.id] },
+        tenantId,
+        data: {
+          title: `You've been invited to join ${tenant.name}`,
+          body: `You have a pending invitation to join ${tenant.name} as a teacher on Gyanverse.`,
+          link: url,
+        },
+      })
+    })
+
   return invite
 }
 
@@ -201,6 +222,17 @@ export async function acceptInvite(userId: string, token: string) {
     .from(tenants)
     .where(eq(tenants.id, invite.tenantId))
     .limit(1)
+
+  void dispatch({
+    type: 'invite_accepted',
+    recipients: { userIds: [invite.invitedBy] },
+    tenantId: invite.tenantId,
+    data: {
+      title: 'Invite accepted',
+      body: `Your teacher invite for ${tenant?.name ?? 'your coaching'} has been accepted.`,
+      link: `/teachers`,
+    },
+  })
 
   return { success: true, role: 'teacher', tenant }
 }

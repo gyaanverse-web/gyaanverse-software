@@ -5,6 +5,7 @@ import { memberships, coachingJoinCodes } from './membership.schema.js'
 import { users } from '../auth/auth.schema.js'
 import { getTenantById } from '../tenant/tenant.service.js'
 import { assertWithinLimit } from '../billing/billing.service.js'
+import { dispatch } from '@modules/notification/index.js'
 
 // ── Coaching join codes ─────────────────────────────────────────────────────
 
@@ -32,17 +33,25 @@ export async function generateCoachingJoinCode(
       createdBy,
       code,
       expiresAt: options?.expiresAt ?? null,
-      maxUses: options?.maxUses ?? 9999,
+      maxUses: options?.maxUses ?? 99999,
     })
     .returning()
   return record
 }
 
 export async function listCoachingJoinCodes(tenantId: string) {
+  const now = new Date()
   return db
     .select()
     .from(coachingJoinCodes)
-    .where(and(eq(coachingJoinCodes.tenantId, tenantId), eq(coachingJoinCodes.revoked, false)))
+    .where(
+      and(
+        eq(coachingJoinCodes.tenantId, tenantId),
+        eq(coachingJoinCodes.revoked, false),
+        sql`(${coachingJoinCodes.expiresAt} IS NULL OR ${coachingJoinCodes.expiresAt} > ${now})`,
+        sql`${coachingJoinCodes.usedCount} < ${coachingJoinCodes.maxUses}`,
+      ),
+    )
     .orderBy(desc(coachingJoinCodes.createdAt))
 }
 
@@ -106,6 +115,25 @@ export async function useCoachingJoinCode(userId: string, code: string) {
   })
 
   const tenant = await getTenantById(record.tenantId)
+
+  // Notify coaching owners of the new student
+  void db
+    .select({ userId: memberships.userId })
+    .from(memberships)
+    .where(and(eq(memberships.tenantId, record.tenantId), eq(memberships.role, 'coaching_owner')))
+    .then((owners) => {
+      if (owners.length === 0) return
+      return dispatch({
+        type: 'class_update',
+        recipients: { userIds: owners.map((o) => o.userId) },
+        tenantId: record.tenantId,
+        data: {
+          title: 'New student joined',
+          body: `A new student has joined ${tenant?.name ?? 'your coaching'}.`,
+        },
+      })
+    })
+
   return { success: true, role: 'student', tenant }
 }
 

@@ -1,11 +1,13 @@
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, and, inArray, sql } from 'drizzle-orm'
 import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
 import { tenants, tenantSettings } from './tenant.schema.js'
 import { memberships, coachingJoinCodes } from '../membership/membership.schema.js'
 import { classes, classMembers, joinCodes } from '../class/class.schema.js'
+import { exams } from '../exam/exam.schema.js'
 import { users } from '../auth/auth.schema.js'
 import { assertWithinLimit, assertHasFeature } from '../billing/billing.service.js'
+import { type PlanName } from '../../config/plans.js'
 import type { Tenant } from './tenant.types.js'
 
 const RESERVED_SLUGS = ['www', 'api', 'admin', 'app', 'static']
@@ -178,6 +180,61 @@ export async function listMembers(tenantId: string, role?: string) {
     .where(condition)
 }
 
+/**
+ * Owner-facing teachers roster with per-teacher workload: how many batches each
+ * teacher owns, how many approved students sit across those batches, and how
+ * many exams they have authored. Aggregated in three grouped queries (no
+ * per-teacher round-trips) rather than one giant join, so the student and exam
+ * counts don't multiply each other.
+ */
+export async function listTeachersWithWorkload(tenantId: string) {
+  const teachers = await db
+    .select({
+      userId: memberships.userId,
+      name: users.name,
+      email: users.email,
+      phone: users.phoneNumber,
+      joinedAt: memberships.createdAt,
+    })
+    .from(memberships)
+    .innerJoin(users, eq(memberships.userId, users.id))
+    .where(and(eq(memberships.tenantId, tenantId), eq(memberships.role, 'teacher')))
+
+  if (teachers.length === 0) return []
+
+  const teacherIds = teachers.map((t) => t.userId)
+
+  const classAgg = await db
+    .select({
+      teacherId: classes.teacherId,
+      classCount: sql<number>`count(distinct ${classes.id})`.mapWith(Number),
+      studentCount: sql<number>`count(distinct ${classMembers.studentId}) filter (where ${classMembers.status} = 'approved')`.mapWith(Number),
+    })
+    .from(classes)
+    .leftJoin(classMembers, eq(classMembers.classId, classes.id))
+    .where(and(eq(classes.tenantId, tenantId), inArray(classes.teacherId, teacherIds)))
+    .groupBy(classes.teacherId)
+
+  const examAgg = await db
+    .select({
+      createdBy: exams.createdBy,
+      examCount: sql<number>`count(*)`.mapWith(Number),
+    })
+    .from(exams)
+    .where(and(eq(exams.tenantId, tenantId), inArray(exams.createdBy, teacherIds)))
+    .groupBy(exams.createdBy)
+
+  const classByTeacher = new Map(classAgg.map((c) => [c.teacherId, c]))
+  const examByTeacher = new Map(examAgg.map((e) => [e.createdBy, e]))
+
+  return teachers.map((t) => ({
+    ...t,
+    classCount: classByTeacher.get(t.userId)?.classCount ?? 0,
+    studentCount: classByTeacher.get(t.userId)?.studentCount ?? 0,
+    examCount: examByTeacher.get(t.userId)?.examCount ?? 0,
+  }))
+}
+
 // ── Update coaching details ─────────────────────────────────────────────────
 
 export async function updateTenant(
@@ -240,6 +297,21 @@ export async function deleteCoaching(tenantId: string, requesterId: string): Pro
     // invites cascade automatically (onDelete: 'cascade' on invites.tenantId)
     await tx.delete(tenants).where(eq(tenants.id, tenantId))
   })
+}
+
+// ── Change the tenant's plan ────────────────────────────────────────────────
+
+export async function upgradePlan(tenantId: string, requesterId: string, plan: PlanName): Promise<Tenant> {
+  const tenant = await getTenantById(tenantId)
+  if (!tenant) throw Errors.NOT_FOUND('Coaching')
+  if (tenant.ownerId !== requesterId) throw Errors.FORBIDDEN()
+
+  const [updated] = await db
+    .update(tenants)
+    .set({ plan, updatedAt: new Date() })
+    .where(eq(tenants.id, tenantId))
+    .returning()
+  return toTenant(updated)
 }
 
 // ── Remove a member from the coaching ──────────────────────────────────────

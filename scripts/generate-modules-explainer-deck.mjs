@@ -368,5 +368,5 @@ addModuleSlide('Operations, Revenue, and Platform Modules', modules.slice(10, 15
   addFooter(slide, 'Gyanverse Backend Module Architecture')
 }
 
-await pptx.writeFile({ fileName: 'artifacts/backend-modules-explainer-client-deck.pptx' })
-console.log('Created artifacts/backend-modules-explainer-client-deck.pptx')
+await pptx.writeFile({ fileName: '../docs/decks/backend-modules-explainer-client-deck.pptx' })
+console.log('Created docs/decks/backend-modules-explainer-client-deck.pptx')

@@ -5,6 +5,16 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./test/setup.ts'],
+    // Tests share a DB; truncate-between-tests is incompatible with parallelism.
+    fileParallelism: false,
+    pool: 'threads',
+    poolOptions: {
+      threads: { singleThread: true },
+    },
+    testTimeout: 15000,
+    hookTimeout: 30000,
+    include: ['test/**/*.test.ts'],
   },
   resolve: {
     alias: {

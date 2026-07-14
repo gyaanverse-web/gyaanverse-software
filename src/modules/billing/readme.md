@@ -1,0 +1,1 @@
+One thing to note for Razorpay setup: when creating subscriptions from the payment module later, pass notes: { tenant_id: "<tenantId>" } in the Razorpay subscription creation call — the webhook handler reads tenant_id from there to know which tenant to update. Also add RAZORPAY_PLAN_STARTER, RAZORPAY_PLAN_GROWTH, RAZORPAY_PLAN_PRO env vars with your Razorpay plan IDs.

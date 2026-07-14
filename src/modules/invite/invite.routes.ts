@@ -19,17 +19,35 @@ const createInviteSchema = z
     { message: 'Invalid contact value for the given contactType' },
   )
 
+const AUTH = [{ bearerAuth: [] }]
+
 export async function inviteRoutes(app: FastifyInstance) {
   // POST /tenant/invites — coaching_owner sends a teacher invite (email or phone)
   app.post(
     '/tenant/invites',
-    { preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')] },
+    {
+      schema: {
+        tags: ['Invites'],
+        summary: 'Send a teacher invite',
+        description: 'Sends an invite link to the given email or phone number. The recipient must click the link and call `POST /invites/accept` with the token. Enforces the plan\'s teacher limit.',
+        security: AUTH,
+        body: {
+          type: 'object',
+          required: ['contact', 'contactType'],
+          properties: {
+            contact: { type: 'string', description: 'Email address or phone number of the invitee' },
+            contactType: { type: 'string', enum: ['email', 'phone'] },
+          },
+        },
+      },
+      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')],
+    },
     async (req, reply) => {
       const parsed = createInviteSchema.safeParse(req.body)
       if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
 
-      const tenant = (req as any).tenant
-      const { id: invitedBy } = (req as any).user
+      const tenant = req.tenant!
+      const { id: invitedBy } = req.user!
       const invite = await createInvite(
         tenant.id,
         invitedBy,
@@ -43,9 +61,23 @@ export async function inviteRoutes(app: FastifyInstance) {
   // GET /tenant/invites?status=pending — list invites for this coaching
   app.get(
     '/tenant/invites',
-    { preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')] },
+    {
+      schema: {
+        tags: ['Invites'],
+        summary: 'List invites',
+        description: 'Lists all invites for the resolved tenant. Filter by status with `?status=pending|accepted|revoked`.',
+        security: AUTH,
+        querystring: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', enum: ['pending', 'accepted', 'revoked'] },
+          },
+        },
+      },
+      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')],
+    },
     async (req, reply) => {
-      const tenant = (req as any).tenant
+      const tenant = req.tenant!
       const { status } = req.query as { status?: string }
       const list = await listInvites(tenant.id, status)
       reply.send({ invites: list })
@@ -55,10 +87,23 @@ export async function inviteRoutes(app: FastifyInstance) {
   // DELETE /tenant/invites/:id — revoke a pending invite
   app.delete(
     '/tenant/invites/:id',
-    { preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')] },
+    {
+      schema: {
+        tags: ['Invites'],
+        summary: 'Revoke a pending invite',
+        description: 'Cancels a pending invite. Cannot revoke an already-accepted or already-revoked invite.',
+        security: AUTH,
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+      },
+      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')],
+    },
     async (req, reply) => {
       const { id } = req.params as { id: string }
-      const tenant = (req as any).tenant
+      const tenant = req.tenant!
       const result = await revokeInvite(tenant.id, id)
       reply.send(result)
     },
@@ -66,13 +111,32 @@ export async function inviteRoutes(app: FastifyInstance) {
 
   // POST /invites/accept — authenticated teacher accepts their invite
   // No tenant middleware — the tenant is derived from the invite token itself.
-  app.post('/invites/accept', { preHandler: [authenticate] }, async (req, reply) => {
-    const { token } = (req.body ?? {}) as { token?: string }
-    if (!token || typeof token !== 'string') {
-      throw Errors.VALIDATION('token is required')
-    }
-    const { id: userId } = (req as any).user
-    const result = await acceptInvite(userId, token)
-    reply.send(result)
-  })
+  app.post(
+    '/invites/accept',
+    {
+      schema: {
+        tags: ['Invites'],
+        summary: 'Accept a teacher invite',
+        description: 'Accepts the invite token and adds the authenticated user as a teacher in the coaching. The user\'s email or phone must match the invite\'s contact. The token expires after 48 hours.',
+        security: AUTH,
+        body: {
+          type: 'object',
+          required: ['token'],
+          properties: {
+            token: { type: 'string', description: '32-character hex token from the invite link' },
+          },
+        },
+      },
+      preHandler: [authenticate],
+    },
+    async (req, reply) => {
+      const { token } = (req.body ?? {}) as { token?: string }
+      if (!token || typeof token !== 'string') {
+        throw Errors.VALIDATION('token is required')
+      }
+      const { id: userId } = req.user!
+      const result = await acceptInvite(userId, token)
+      reply.send(result)
+    },
+  )
 }

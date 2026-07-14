@@ -562,5 +562,5 @@ function addBullets(slide, items, x, y, w, h, size = 18) {
   addFooter(slide, 'Gyanverse Engineering Team')
 }
 
-await pptx.writeFile({ fileName: 'artifacts/backend-structure-client-presentation.pptx' })
-console.log('Created artifacts/backend-structure-client-presentation.pptx')
+await pptx.writeFile({ fileName: '../docs/decks/backend-structure-client-presentation.pptx' })
+console.log('Created docs/decks/backend-structure-client-presentation.pptx')

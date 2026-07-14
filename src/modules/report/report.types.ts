@@ -1,3 +1,5 @@
+export type ReportStatus = 'pending' | 'ready' | 'archived'
+
 export interface Report {
   id: string
   sessionId: string
@@ -6,7 +8,10 @@ export interface Report {
   tenantId: string
   totalScore: number
   maxScore: number
-  status: string
+  autoScore: number
+  aiScore: number
+  status: ReportStatus
+  publishedAt: Date | null
   createdAt: Date
 }
 
@@ -17,5 +22,20 @@ export interface ReportItem {
   score: number
   maxScore: number
   feedback: string | null
-  imageUrl: string
+  imageUrl: string | null
+}
+
+export interface ReportSummary {
+  id: string
+  sessionId: string
+  examId: string
+  examTitle: string
+  studentId: string
+  totalScore: number
+  maxScore: number
+  autoScore: number
+  aiScore: number
+  status: ReportStatus
+  publishedAt: Date | null
+  createdAt: Date
 }
