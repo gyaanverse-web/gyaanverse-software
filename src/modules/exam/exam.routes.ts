@@ -4,12 +4,14 @@ import { Errors, AppError } from '../../shared/errors.js'
 import { authenticate, requireTenantRole } from '../../middleware/auth.middleware.js'
 import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
 import {
-  createExam, updateExam, publishExam, archiveExam,
+  createExam, updateExam, submitForReview, archiveExam, publishResults, duplicateExam,
   setExamChapters, linkExamToClass, unlinkExamFromClass, listExamClasses,
   addQuestion, updateQuestion, removeQuestion, reorderQuestions,
   listExamsForTenant, listAvailableExamsForStudent, listPublicExams, getExamStatsForTenant,
   getExamFull, getExamForStudent, getPublicExamPreview, getPublicExamForStudent,
 } from './exam.service.js'
+import { EXAM_STATUSES } from './exam.types.js'
+import type { ExamStatus } from './exam.types.js'
 import {
   generateExam, keepDraftQuestion, keepAllDraftQuestions, discardDraftQuestion,
   regenerateDraftQuestion, editDraftQuestion, finalizeGeneration,
@@ -171,8 +173,12 @@ export async function examRoutes(app: FastifyInstance) {
     schema: {
       tags: ['Exams'],
       summary: 'List exams',
-      description: 'Returns exams for the resolved tenant. Students only see exams available to them.',
+      description: 'Returns exams for the resolved tenant. Optional `?status=` (comma-separated lifecycle statuses, e.g. `under_review,live`) powers the teacher/admin dashboard buckets. Students only see exams available to them.',
       security: AUTH,
+      querystring: {
+        type: 'object',
+        properties: { status: { type: 'string', description: 'Comma-separated lifecycle statuses to filter by' } },
+      },
     },
     preHandler: tenantAny,
   }, async (req, reply) => {
@@ -182,7 +188,11 @@ export async function examRoutes(app: FastifyInstance) {
       const items = await listAvailableExamsForStudent(user.id, tenant.id)
       return reply.send({ exams: items })
     }
-    const items = await listExamsForTenant(tenant.id, user.id, user.role)
+    const { status } = req.query as { status?: string }
+    const statuses = status
+      ? (status.split(',').map((s) => s.trim()).filter((s) => (EXAM_STATUSES as readonly string[]).includes(s)) as ExamStatus[])
+      : undefined
+    const items = await listExamsForTenant(tenant.id, user.id, user.role, statuses)
     reply.send({ exams: items })
   })
 
@@ -255,11 +265,13 @@ export async function examRoutes(app: FastifyInstance) {
     reply.send({ exam })
   })
 
+  // NOTE(phase-3): path stays `/publish` for now but the handler is repurposed
+  // to teacher submit-for-review. Phase 3 renames the path to `/submit`.
   app.post('/tenant/exams/:id/publish', {
     schema: {
       tags: ['Exams'],
-      summary: 'Publish an exam',
-      description: 'Moves the exam from `draft` to `published` status, making it available to students.',
+      summary: 'Submit an exam for review',
+      description: 'Teacher submits a `draft` (or `changes_requested`) exam for admin review, moving it to `under_review`. Requires ≥1 question, ≥1 class for private exams, and the public-mock feature for public exams. Replaces the old direct self-publish.',
       security: AUTH,
       params: {
         type: 'object',
@@ -272,7 +284,7 @@ export async function examRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string }
     const tenant = req.tenant!
     const user = req.user!
-    const exam = await publishExam(id, tenant.id, user.id, user.role)
+    const exam = await submitForReview(id, tenant.id, user.id, user.role)
     reply.send({ exam })
   })
 
@@ -295,6 +307,48 @@ export async function examRoutes(app: FastifyInstance) {
     const user = req.user!
     const exam = await archiveExam(id, tenant.id, user.id, user.role)
     reply.send({ exam })
+  })
+
+  app.post('/tenant/exams/:id/publish-results', {
+    schema: {
+      tags: ['Exams'],
+      summary: 'Publish exam results',
+      description: 'Teacher publishes results (`under_evaluation → results_published`), revealing scores/reports to students. Until this is called, private-exam results stay hidden.',
+      security: AUTH,
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+    preHandler: tenantAuth,
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const tenant = req.tenant!
+    const user = req.user!
+    const exam = await publishResults(id, tenant.id, user.id, user.role)
+    reply.send({ exam })
+  })
+
+  app.post('/tenant/exams/:id/duplicate', {
+    schema: {
+      tags: ['Exams'],
+      summary: 'Duplicate an exam',
+      description: 'Clones the exam (metadata, questions, chapter coverage, class links) into a fresh `draft` owned by the requester. Allowed from any state.',
+      security: AUTH,
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+    preHandler: tenantAuth,
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const tenant = req.tenant!
+    const user = req.user!
+    const exam = await duplicateExam(id, tenant.id, user.id, user.role)
+    reply.status(201).send({ exam })
   })
 
   // ── Questions (reorder must be registered before /:qid) ───────────────────

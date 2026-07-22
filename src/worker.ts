@@ -14,6 +14,11 @@ import {
 import type { BulkNotifyPayload } from './modules/notification/notification.types.js'
 import { processJob as processEvaluationJob } from './modules/evaluation/evaluation.service.js'
 import type { EvaluationJobPayload } from './modules/evaluation/evaluation.types.js'
+import {
+  EXAM_LIFECYCLE_QUEUE,
+  ensureLifecycleSchedule,
+  runLifecycleTick,
+} from './modules/exam/exam.scheduler.js'
 
 const connection = new IORedis(env.REDIS_URL, {
   maxRetriesPerRequest: null,
@@ -162,9 +167,29 @@ const bulkWorker = new Worker(
   { connection },
 )
 
+// ── Exam lifecycle worker (time-triggered transitions) ────────────────────────
+
+const lifecycleWorker = new Worker(
+  EXAM_LIFECYCLE_QUEUE,
+  async () => {
+    const result = await runLifecycleTick()
+    if (result.started || result.ended || result.completed) {
+      console.log(
+        `[exam-lifecycle] started=${result.started} ended=${result.ended} completed=${result.completed}`,
+      )
+    }
+  },
+  { connection },
+)
+
+// Register the once-a-minute repeatable tick on boot.
+void ensureLifecycleSchedule().catch((err) =>
+  console.error('[exam-lifecycle] failed to register schedule:', err),
+)
+
 // ── Shared error logging ──────────────────────────────────────────────────────
 
-for (const worker of [evaluationWorker, emailWorker, smsWorker, bulkWorker]) {
+for (const worker of [evaluationWorker, emailWorker, smsWorker, bulkWorker, lifecycleWorker]) {
   worker.on('error', (err) => console.error(`[worker:${worker.name}] error:`, err))
 }
 
@@ -176,6 +201,7 @@ async function shutdown() {
     emailWorker.close(),
     smsWorker.close(),
     bulkWorker.close(),
+    lifecycleWorker.close(),
   ])
   connection.disconnect()
 }
@@ -183,4 +209,4 @@ async function shutdown() {
 process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
 
-console.log('[worker] started: evaluation, notification-email, notification-sms, notification-bulk')
+console.log('[worker] started: evaluation, notification-email, notification-sms, notification-bulk, exam-lifecycle')

@@ -1,9 +1,10 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, or, inArray } from 'drizzle-orm'
 import { db } from '@shared/db.js'
 import { AppError, Errors } from '@shared/errors.js'
 import { reports, reportItems } from './report.schema.js'
 import { examSessions, sessionAnswers } from '@modules/exam-session/exam-session.schema.js'
 import { exams, questions } from '@modules/exam/exam.schema.js'
+import { assertResultsVisible } from '@modules/exam/exam.service.js'
 import { evaluationJobs, questionResults } from '@modules/evaluation/evaluation.schema.js'
 import { dispatch } from '@modules/notification/index.js'
 import type { ReportItem, ReportStatus, ReportSummary } from './report.types.js'
@@ -26,7 +27,7 @@ export async function createReportForSession(sessionId: string): Promise<{ repor
   if (!session) throw Errors.NOT_FOUND('Session')
 
   const [exam] = await db
-    .select({ id: exams.id, title: exams.title, tenantId: exams.tenantId })
+    .select({ id: exams.id, title: exams.title, tenantId: exams.tenantId, visibility: exams.visibility })
     .from(exams)
     .where(eq(exams.id, session.examId))
     .limit(1)
@@ -132,17 +133,24 @@ export async function createReportForSession(sessionId: string): Promise<{ repor
 
   // 5. Notify student. Fire-and-forget — notification failures must not
   // prevent the report from being marked ready.
-  void dispatch({
-    type: 'result_ready',
-    recipients: { userIds: [session.studentId] },
-    tenantId: session.tenantId,
-    data: {
-      title: 'Your report is ready',
-      body: `Your ${exam.title} report has been published. You scored ${totalScore} out of ${maxScore}.`,
-      link: `/exams/${session.examId}/results/${sessionId}`,
-      metadata: { reportId, sessionId, examId: session.examId },
-    },
-  })
+  //
+  // Private (coaching) exams gate results behind the teacher's publish step, so
+  // we must NOT tell the student their report is ready here — that notification
+  // fires from the results_published transition (Phase 4). Public marketplace
+  // exams are self-paced and notify immediately.
+  if (exam.visibility !== 'private') {
+    void dispatch({
+      type: 'result_ready',
+      recipients: { userIds: [session.studentId] },
+      tenantId: session.tenantId,
+      data: {
+        title: 'Your report is ready',
+        body: `Your ${exam.title} report has been published. You scored ${totalScore} out of ${maxScore}.`,
+        link: `/exams/${session.examId}/results/${sessionId}`,
+        metadata: { reportId, sessionId, examId: session.examId },
+      },
+    })
+  }
 
   return { reportId, created: true }
 }
@@ -156,6 +164,9 @@ export async function getReportForStudent(sessionId: string, studentId: string) 
     .where(and(eq(reports.sessionId, sessionId), eq(reports.studentId, studentId)))
     .limit(1)
   if (!report) return null
+
+  // Private exams hide the report until the teacher publishes results.
+  await assertResultsVisible(report.examId)
 
   const items = await loadReportItems(report.id)
   return { ...report, items }
@@ -191,7 +202,17 @@ export async function listReportsForStudent(studentId: string): Promise<ReportSu
     })
     .from(reports)
     .innerJoin(exams, eq(exams.id, reports.examId))
-    .where(eq(reports.studentId, studentId))
+    .where(
+      and(
+        eq(reports.studentId, studentId),
+        // Private exams appear in the list only once results are published;
+        // public (self-paced) exam reports are always visible.
+        or(
+          inArray(exams.visibility, ['public_free', 'public_paid']),
+          inArray(exams.status, ['results_published', 'completed']),
+        ),
+      ),
+    )
     .orderBy(desc(reports.createdAt)) as Promise<ReportSummary[]>
 }
 

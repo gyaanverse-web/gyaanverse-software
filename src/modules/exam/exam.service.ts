@@ -2,14 +2,16 @@ import { eq, and, inArray, sql, desc, asc } from 'drizzle-orm'
 import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
 import {
-  exams, questions, examChapters, examClasses,
+  exams, questions, examChapters, examClasses, examStatusHistory,
 } from './exam.schema.js'
+import type { ExamStatus } from './exam.types.js'
 import { examPurchases } from '../payment/payment.schema.js'
 import { examSessions } from '../exam-session/exam-session.schema.js'
 import { reports } from '../report/report.schema.js'
 import { classMembers } from '../class/class.schema.js'
 import { assertWithinLimit, assertHasFeature } from '../billing/billing.service.js'
 import { validateQuestionPayload } from './exam.validators.js'
+import { memberships } from '../membership/membership.schema.js'
 import { dispatch } from '@modules/notification/index.js'
 
 // ── Internal helpers ────────────────────────────────────────────────────────
@@ -29,6 +31,305 @@ export async function assertExamEditor(
   if (requesterRole !== 'coaching_owner' && exam.createdBy !== requesterId)
     throw new AppError('FORBIDDEN', 'You can only manage exams you created', 403)
   return exam
+}
+
+// ── Exam state machine ───────────────────────────────────────────────────────
+//
+// Every status change must go through `transitionExam` so that (a) only allowed
+// transitions happen, (b) the acting role is authorised, and (c) a row is
+// written to `exam_status_history` for the PRD timeline. Direct
+// `db.update(exams).set({ status })` is disallowed outside this section.
+//
+// Actor kinds:
+//   'author' — the exam creator, or any coaching_owner.
+//   'owner'  — a coaching_owner only (the PRD "Admin").
+//   'system' — the time-triggered worker (no user), or a coaching_owner override.
+
+type TransitionActorKind = 'author' | 'owner' | 'system'
+export type TransitionActor = { id: string; role: string } | null
+
+// Allowed transitions, keyed `${from}->${to}`. Anything absent is rejected.
+const EXAM_TRANSITIONS: Record<string, TransitionActorKind> = {
+  // Teacher submits / re-submits for admin review
+  'draft->under_review': 'author',
+  'changes_requested->under_review': 'author',
+  // Admin (owner) review decisions
+  'under_review->approved': 'owner',
+  'under_review->changes_requested': 'owner',
+  'under_review->rejected': 'owner',
+  // Teacher reopens a rejected exam to rework it
+  'rejected->draft': 'author',
+  // Approve & Schedule: owner sets batch/date/time, then schedules
+  'approved->scheduled': 'owner',
+  // Time-triggered lifecycle (worker); a coaching_owner may override
+  'scheduled->live': 'system',
+  'live->under_evaluation': 'system',
+  // Teacher publishes results (gates student visibility)
+  'under_evaluation->results_published': 'author',
+  // Wrap up
+  'results_published->completed': 'system',
+  'completed->archived': 'owner',
+}
+
+function assertTransitionAllowed(
+  kind: TransitionActorKind,
+  exam: { createdBy: string },
+  actor: TransitionActor,
+) {
+  switch (kind) {
+    case 'author':
+      if (!actor) throw Errors.FORBIDDEN()
+      if (actor.role !== 'coaching_owner' && exam.createdBy !== actor.id)
+        throw new AppError('FORBIDDEN', 'You can only manage exams you created', 403)
+      return
+    case 'owner':
+      if (!actor || actor.role !== 'coaching_owner')
+        throw new AppError('FORBIDDEN', 'Only the coaching owner can perform this action', 403)
+      return
+    case 'system':
+      // Worker calls pass a null actor; a human override must be the owner.
+      if (actor && actor.role !== 'coaching_owner')
+        throw new AppError('FORBIDDEN', 'Only the coaching owner can override this transition', 403)
+      return
+  }
+}
+
+async function getTenantOwnerIds(tenantId: string): Promise<string[]> {
+  const rows = await db
+    .select({ userId: memberships.userId })
+    .from(memberships)
+    .where(and(eq(memberships.tenantId, tenantId), eq(memberships.role, 'coaching_owner')))
+  return rows.map((r) => r.userId)
+}
+
+async function getExamClassIds(examId: string): Promise<string[]> {
+  const rows = await db.select({ classId: examClasses.classId }).from(examClasses).where(eq(examClasses.examId, examId))
+  return rows.map((r) => r.classId)
+}
+
+/**
+ * Fire the in-app / email notifications a status change implies. Best-effort:
+ * wrapped in try/catch and called fire-and-forget from `transitionExam` so a
+ * notification failure (e.g. Redis down) never rolls back the transition.
+ * Centralised here so worker, admin, and teacher paths all notify identically.
+ */
+async function notifyTransition(exam: typeof exams.$inferSelect, to: ExamStatus, remarks?: string) {
+  try {
+    switch (to) {
+      case 'under_review': {
+        const owners = await getTenantOwnerIds(exam.tenantId)
+        if (owners.length > 0)
+          await dispatch({
+            type: 'exam_submitted',
+            recipients: { userIds: owners },
+            tenantId: exam.tenantId,
+            data: {
+              title: 'Exam submitted for review',
+              body: `"${exam.title}" was submitted and is awaiting your review.`,
+              link: `/exams/${exam.id}`,
+              metadata: { examId: exam.id },
+            },
+          })
+        break
+      }
+      case 'changes_requested':
+        await dispatch({
+          type: 'exam_changes_requested',
+          recipients: { userIds: [exam.createdBy] },
+          tenantId: exam.tenantId,
+          data: {
+            title: 'Changes requested on your exam',
+            body: `Changes were requested on "${exam.title}".${remarks ? ` Remarks: ${remarks}` : ''}`,
+            link: `/exams/${exam.id}`,
+            metadata: { examId: exam.id, remarks: remarks ?? null },
+          },
+        })
+        break
+      case 'rejected':
+        await dispatch({
+          type: 'exam_rejected',
+          recipients: { userIds: [exam.createdBy] },
+          tenantId: exam.tenantId,
+          data: {
+            title: 'Your exam was rejected',
+            body: `"${exam.title}" was rejected.${remarks ? ` Remarks: ${remarks}` : ''}`,
+            link: `/exams/${exam.id}`,
+            metadata: { examId: exam.id, remarks: remarks ?? null },
+          },
+        })
+        break
+      case 'scheduled':
+        await dispatch({
+          type: 'exam_scheduled',
+          recipients: { userIds: [exam.createdBy] },
+          tenantId: exam.tenantId,
+          data: {
+            title: 'Your exam was approved & scheduled',
+            body: `"${exam.title}" has been approved${exam.scheduledAt ? ` and is scheduled for ${exam.scheduledAt.toISOString()}` : ''}.`,
+            link: `/exams/${exam.id}`,
+            metadata: { examId: exam.id },
+          },
+        })
+        break
+      case 'live': {
+        const classIds = await getExamClassIds(exam.id)
+        for (const classId of classIds)
+          await dispatch({
+            type: 'exam_assigned',
+            recipients: { classId },
+            tenantId: exam.tenantId,
+            data: {
+              title: 'New exam available',
+              body: `"${exam.title}" is now live. Start your attempt before it ends.`,
+              link: `/exams/${exam.id}`,
+              metadata: { examId: exam.id },
+            },
+          })
+        break
+      }
+      case 'results_published': {
+        const classIds = await getExamClassIds(exam.id)
+        for (const classId of classIds)
+          await dispatch({
+            type: 'results_published',
+            recipients: { classId },
+            tenantId: exam.tenantId,
+            data: {
+              title: 'Results published',
+              body: `Results for "${exam.title}" are now available.`,
+              link: `/exams/${exam.id}`,
+              metadata: { examId: exam.id },
+            },
+          })
+        break
+      }
+    }
+  } catch (err) {
+    console.error(`[exam] transition notification failed (${to}) for ${exam.id}:`, err)
+  }
+}
+
+/**
+ * Move an exam to a new lifecycle status, enforcing the allowed-transition map
+ * and the acting role, and recording the change in `exam_status_history`.
+ * Also stamps the relevant lifecycle timestamp columns as a side effect.
+ *
+ * `actor` is null for system/worker-driven transitions (scheduled→live,
+ * live→under_evaluation, results_published→completed).
+ */
+export async function transitionExam(params: {
+  examId: string
+  tenantId: string
+  to: ExamStatus
+  actor: TransitionActor
+  remarks?: string
+}) {
+  const { examId, tenantId, to, actor, remarks } = params
+
+  const [exam] = await db
+    .select()
+    .from(exams)
+    .where(and(eq(exams.id, examId), eq(exams.tenantId, tenantId)))
+    .limit(1)
+  if (!exam) throw Errors.NOT_FOUND('Exam')
+
+  const from = exam.status as ExamStatus
+  if (from === to) throw Errors.VALIDATION(`Exam is already ${to}`)
+
+  const kind = EXAM_TRANSITIONS[`${from}->${to}`]
+  if (!kind) throw Errors.VALIDATION(`Cannot move an exam from ${from} to ${to}`)
+
+  assertTransitionAllowed(kind, exam, actor)
+
+  const now = new Date()
+  const patch: Record<string, unknown> = { status: to, updatedAt: now }
+  switch (to) {
+    case 'under_review':
+      patch.submittedAt = now
+      break
+    case 'approved':
+      patch.reviewedBy = actor?.id ?? null
+      patch.reviewedAt = now
+      break
+    case 'changes_requested':
+    case 'rejected':
+      patch.reviewedBy = actor?.id ?? null
+      patch.reviewedAt = now
+      patch.reviewRemarks = remarks ?? null
+      break
+    case 'live':
+      // First moment the exam becomes student-visible — mirror the old
+      // publishedAt semantics so marketplace ordering keeps working.
+      if (!exam.publishedAt) patch.publishedAt = now
+      break
+    case 'results_published':
+      patch.resultsPublishedAt = now
+      break
+    case 'completed':
+      patch.completedAt = now
+      break
+  }
+
+  const [updated] = await db.transaction(async (tx) => {
+    const [row] = await tx.update(exams).set(patch).where(eq(exams.id, examId)).returning()
+    await tx.insert(examStatusHistory).values({
+      examId,
+      fromStatus: from,
+      toStatus: to,
+      actorId: actor?.id ?? null,
+      remarks: remarks ?? null,
+    })
+    return [row]
+  })
+
+  // Fire-and-forget lifecycle notifications (best-effort; never blocks/rolls back).
+  void notifyTransition(updated, to, remarks)
+
+  return updated
+}
+
+// Statuses in which the teacher may still edit exam content (metadata, questions,
+// chapters, class links). Everything past submission is locked.
+const EDITABLE_STATUSES: ReadonlySet<ExamStatus> = new Set(['draft', 'changes_requested'])
+
+// Statuses in which a private exam's results are visible to students. Public
+// exams are self-paced and show results as soon as they are evaluated (see
+// assertResultsVisible in the read paths).
+export const RESULTS_VISIBLE_STATUSES: ReadonlySet<ExamStatus> = new Set([
+  'results_published', 'completed',
+])
+
+// Lifecycle statuses a student may see at all: an upcoming scheduled exam
+// (metadata only — questions stay hidden until it goes live), the live exam
+// itself, and every post-live state (so attempted exams remain reachable for
+// "results pending" / "result ready"). Attempting is still live-only —
+// startSession asserts `live` + the schedule window separately.
+export const STUDENT_VISIBLE_STATUSES: ReadonlySet<ExamStatus> = new Set([
+  'scheduled', 'live', 'under_evaluation', 'results_published', 'completed',
+])
+
+function assertExamEditable(exam: { status: string }) {
+  if (!EDITABLE_STATUSES.has(exam.status as ExamStatus))
+    throw Errors.VALIDATION(
+      `This exam can only be edited while in draft or changes_requested (currently ${exam.status})`,
+    )
+}
+
+/**
+ * Guard for student-facing results / report / evaluation reads. Private
+ * (coaching) exams hide scores until the teacher publishes results — status
+ * must be `results_published` or `completed`. Public marketplace exams are
+ * self-paced and show results as soon as they are evaluated, so they are exempt.
+ */
+export async function assertResultsVisible(examId: string) {
+  const [exam] = await db
+    .select({ visibility: exams.visibility, status: exams.status })
+    .from(exams)
+    .where(eq(exams.id, examId))
+    .limit(1)
+  if (!exam) throw Errors.NOT_FOUND('Exam')
+  if (exam.visibility === 'private' && !RESULTS_VISIBLE_STATUSES.has(exam.status as ExamStatus))
+    throw new AppError('VALIDATION', 'Results for this exam have not been published yet', 422)
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,8 +410,7 @@ export async function updateExam(
   },
 ) {
   const exam = await assertExamEditor(id, tenantId, requesterId, requesterRole)
-  if (exam.status === 'archived')
-    throw new AppError('VALIDATION', 'Cannot edit an archived exam', 422)
+  assertExamEditable(exam)
 
   if (data.visibility && data.visibility !== 'private' && exam.visibility === 'private')
     await assertHasFeature(tenantId, 'public_mocks')
@@ -124,82 +424,171 @@ export async function updateExam(
   return updated
 }
 
-export async function publishExam(
+/**
+ * Teacher submits a draft (or a `changes_requested` exam) for admin review.
+ * Replaces the old direct self-publish: the same guards (≥1 question, ≥1 class
+ * for private exams, public-mock feature gate) now gate entry into the review
+ * pipeline instead of gating going live. The actual status change goes through
+ * `transitionExam` (draft|changes_requested → under_review).
+ */
+export async function submitForReview(
   id: string,
   tenantId: string,
   requesterId: string,
   requesterRole: string,
 ) {
   const exam = await assertExamEditor(id, tenantId, requesterId, requesterRole)
-  if (exam.status !== 'draft')
-    throw new AppError('VALIDATION', `Cannot publish an exam that is already ${exam.status}`, 422)
+  if (exam.status !== 'draft' && exam.status !== 'changes_requested')
+    throw Errors.VALIDATION(`Cannot submit an exam that is ${exam.status}`)
 
   const [{ count: qCount }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(questions)
     .where(eq(questions.examId, id))
   if (Number(qCount) === 0)
-    throw new AppError('VALIDATION', 'Add at least one question before publishing', 422)
+    throw Errors.VALIDATION('Add at least one question before submitting for review')
 
   // A private exam reaches its students only through class assignment, so it
-  // must be linked to at least one class before it can go live. Public exams
+  // must be linked to at least one class before it enters review. Public exams
   // are discoverable in the marketplace independently of classes, so they are
-  // exempt from this check.
+  // exempt from this check but require the public-mock feature.
   if (exam.visibility === 'private') {
     const [{ count: classCount }] = await db
       .select({ count: sql<number>`count(*)` })
       .from(examClasses)
       .where(eq(examClasses.examId, id))
     if (Number(classCount) === 0)
-      throw new AppError('VALIDATION', 'Assign at least one class before publishing', 422)
+      throw Errors.VALIDATION('Assign at least one class before submitting for review')
+  } else {
+    await assertHasFeature(tenantId, 'public_mocks')
   }
 
-  if (exam.visibility !== 'private') await assertHasFeature(tenantId, 'public_mocks')
-
-  const [updated] = await db
-    .update(exams)
-    .set({ status: 'published', publishedAt: new Date(), updatedAt: new Date() })
-    .where(eq(exams.id, id))
-    .returning()
-
-  // Notify students in all classes already linked to this exam
-  void db
-    .select({ classId: examClasses.classId })
-    .from(examClasses)
-    .where(eq(examClasses.examId, id))
-    .then((linked) => {
-      for (const { classId } of linked) {
-        void dispatch({
-          type: 'exam_assigned',
-          recipients: { classId },
-          tenantId,
-          data: {
-            title: 'New exam assigned',
-            body: `"${updated.title}" is now available. Start your attempt before the deadline.`,
-            link: `/exams/${id}`,
-          },
-        })
-      }
-    })
-
-  return updated
+  return transitionExam({
+    examId: id,
+    tenantId,
+    to: 'under_review',
+    actor: { id: requesterId, role: requesterRole },
+  })
 }
 
+/**
+ * Retire a finished exam. Per the PRD this is now a `completed → archived`
+ * transition restricted to the coaching owner (enforced by `transitionExam`),
+ * not the old any-state teacher/owner archive.
+ */
 export async function archiveExam(
   id: string,
   tenantId: string,
   requesterId: string,
   requesterRole: string,
 ) {
-  await assertExamEditor(id, tenantId, requesterId, requesterRole)
+  return transitionExam({
+    examId: id,
+    tenantId,
+    to: 'archived',
+    actor: { id: requesterId, role: requesterRole },
+  })
+}
 
-  const [updated] = await db
-    .update(exams)
-    .set({ status: 'archived', updatedAt: new Date() })
-    .where(eq(exams.id, id))
-    .returning()
+/**
+ * Teacher publishes results (under_evaluation → results_published), making
+ * scores/reports visible to students. The evaluation worker leaves a finished
+ * exam in `under_evaluation`; this is the explicit teacher gate that reveals them.
+ */
+export async function publishResults(
+  id: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+) {
+  const exam = await assertExamEditor(id, tenantId, requesterId, requesterRole)
+  if (exam.status !== 'under_evaluation')
+    throw Errors.VALIDATION(
+      `Results can only be published from under_evaluation (currently ${exam.status})`,
+    )
+  return transitionExam({
+    examId: id,
+    tenantId,
+    to: 'results_published',
+    actor: { id: requesterId, role: requesterRole },
+  })
+}
 
-  return updated
+/**
+ * Clone an exam (metadata + questions + chapter coverage + class links) into a
+ * fresh DRAFT owned by the requester. All lifecycle/audit fields reset. Allowed
+ * from any state (e.g. duplicate a completed exam to run it again).
+ */
+export async function duplicateExam(
+  id: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+) {
+  const source = await assertExamEditor(id, tenantId, requesterId, requesterRole)
+
+  return db.transaction(async (tx) => {
+    const [copy] = await tx
+      .insert(exams)
+      .values({
+        tenantId,
+        createdBy: requesterId,
+        title: `${source.title} (Copy)`,
+        description: source.description,
+        instructions: source.instructions,
+        durationMins: source.durationMins,
+        estimatedDurationMins: source.estimatedDurationMins,
+        generationParams: source.generationParams,
+        gradeLevel: source.gradeLevel,
+        subjectId: source.subjectId,
+        scopeType: source.scopeType,
+        visibility: source.visibility,
+        price: source.price,
+        maxAttempts: source.maxAttempts,
+        // status defaults to 'draft'; lifecycle/audit columns start clean.
+      })
+      .returning()
+
+    const sourceQuestions = await tx
+      .select()
+      .from(questions)
+      .where(eq(questions.examId, id))
+      .orderBy(asc(questions.order))
+    if (sourceQuestions.length > 0) {
+      await tx.insert(questions).values(
+        sourceQuestions.map((q) => ({
+          examId: copy.id,
+          tenantId,
+          bankQuestionId: q.bankQuestionId,
+          order: q.order,
+          type: q.type,
+          difficulty: q.difficulty,
+          body: q.body,
+          imageUrls: q.imageUrls,
+          payload: q.payload,
+          answerKey: q.answerKey,
+          languageVariants: q.languageVariants,
+          marks: q.marks,
+          negativeMarks: q.negativeMarks,
+          explanation: q.explanation,
+          draftStatus: q.draftStatus,
+        })),
+      )
+    }
+
+    const srcChapters = await tx.select().from(examChapters).where(eq(examChapters.examId, id))
+    if (srcChapters.length > 0)
+      await tx.insert(examChapters).values(srcChapters.map((c) => ({ examId: copy.id, chapterId: c.chapterId })))
+
+    const srcClasses = await tx.select().from(examClasses).where(eq(examClasses.examId, id))
+    if (srcClasses.length > 0)
+      await tx.insert(examClasses).values(srcClasses.map((c) => ({ examId: copy.id, classId: c.classId })))
+
+    await recomputeTotalMarks(copy.id, tx)
+
+    const [fresh] = await tx.select().from(exams).where(eq(exams.id, copy.id)).limit(1)
+    return fresh ?? copy
+  })
 }
 
 // ── Scope / access linking ─────────────────────────────────────────────────
@@ -211,7 +600,8 @@ export async function setExamChapters(
   requesterRole: string,
   chapterIds: string[],
 ) {
-  await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  assertExamEditable(exam)
 
   await db.transaction(async (tx) => {
     await tx.delete(examChapters).where(eq(examChapters.examId, examId))
@@ -231,6 +621,7 @@ export async function linkExamToClass(
   classId: string,
 ) {
   const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  assertExamEditable(exam)
 
   const [existing] = await db
     .select({ id: examClasses.id })
@@ -241,20 +632,10 @@ export async function linkExamToClass(
 
   const [row] = await db.insert(examClasses).values({ examId, classId }).returning()
 
-  // If the exam is already published, notify students in the newly linked class
-  if (exam.status === 'published') {
-    void dispatch({
-      type: 'exam_assigned',
-      recipients: { classId },
-      tenantId,
-      data: {
-        title: 'New exam assigned',
-        body: `"${exam.title}" is now available. Start your attempt before the deadline.`,
-        link: `/exams/${examId}`,
-      },
-    })
-  }
-
+  // Class links are only mutable while the exam is still editable (draft /
+  // changes_requested), so there are never live students to notify here. The
+  // go-live transition (admin/worker) is responsible for the "exam available"
+  // notification — see Phase 4.
   return row
 }
 
@@ -265,7 +646,8 @@ export async function unlinkExamFromClass(
   requesterRole: string,
   classId: string,
 ) {
-  await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  assertExamEditable(exam)
   await db.delete(examClasses).where(and(eq(examClasses.examId, examId), eq(examClasses.classId, classId)))
   return { success: true }
 }
@@ -300,7 +682,8 @@ export async function addQuestion(
     explanation?: string
   },
 ) {
-  await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  assertExamEditable(exam)
 
   const validated = validateQuestionPayload(data.type, data.payload, data.answerKey)
   if ('error' in validated) throw new AppError('VALIDATION_ERROR', validated.error, 422)
@@ -351,7 +734,8 @@ export async function updateQuestion(
     explanation?: string | null
   },
 ) {
-  await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  assertExamEditable(exam)
 
   const [q] = await db
     .select()
@@ -399,7 +783,8 @@ export async function removeQuestion(
   requesterId: string,
   requesterRole: string,
 ) {
-  await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  assertExamEditable(exam)
 
   const [q] = await db
     .select({ id: questions.id })
@@ -423,7 +808,8 @@ export async function reorderQuestions(
   requesterRole: string,
   orderedIds: string[],
 ) {
-  await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  assertExamEditable(exam)
 
   const existing = await db
     .select({ id: questions.id })
@@ -449,11 +835,19 @@ export async function listExamsForTenant(
   tenantId: string,
   requesterId: string,
   requesterRole: string,
+  statuses?: ExamStatus[],
 ) {
-  const where =
+  const scope =
     requesterRole === 'coaching_owner'
       ? eq(exams.tenantId, tenantId)
       : and(eq(exams.tenantId, tenantId), eq(exams.createdBy, requesterId))
+
+  // Optional lifecycle filter powers the teacher/admin dashboard buckets
+  // (e.g. Approval Queue = under_review, Live, Evaluation, …).
+  const where =
+    statuses && statuses.length > 0
+      ? and(scope, inArray(exams.status, statuses))
+      : scope
 
   return db.select().from(exams).where(where).orderBy(desc(exams.createdAt))
 }
@@ -475,8 +869,17 @@ export async function getExamStatsForTenant(
   const [counts] = await db
     .select({
       totalExams: sql<number>`count(*)::int`,
-      published: sql<number>`count(*) filter (where ${exams.status} = 'published')::int`,
+      // Per-status lifecycle buckets (PRD teacher/admin dashboards).
       draft: sql<number>`count(*) filter (where ${exams.status} = 'draft')::int`,
+      underReview: sql<number>`count(*) filter (where ${exams.status} = 'under_review')::int`,
+      changesRequested: sql<number>`count(*) filter (where ${exams.status} = 'changes_requested')::int`,
+      rejected: sql<number>`count(*) filter (where ${exams.status} = 'rejected')::int`,
+      approved: sql<number>`count(*) filter (where ${exams.status} = 'approved')::int`,
+      scheduled: sql<number>`count(*) filter (where ${exams.status} = 'scheduled')::int`,
+      live: sql<number>`count(*) filter (where ${exams.status} = 'live')::int`,
+      underEvaluation: sql<number>`count(*) filter (where ${exams.status} = 'under_evaluation')::int`,
+      resultsPublished: sql<number>`count(*) filter (where ${exams.status} = 'results_published')::int`,
+      completed: sql<number>`count(*) filter (where ${exams.status} = 'completed')::int`,
       archived: sql<number>`count(*) filter (where ${exams.status} = 'archived')::int`,
       publicExams: sql<number>`count(*) filter (where ${exams.visibility} in ('public_free', 'public_paid'))::int`,
       totalMarks: sql<number>`coalesce(sum(${exams.totalMarks}), 0)::int`,
@@ -503,9 +906,25 @@ export async function getExamStatsForTenant(
 
   return {
     totalExams: counts.totalExams,
-    published: counts.published,
-    draft: counts.draft,
-    archived: counts.archived,
+    // Full lifecycle breakdown — dashboards derive their buckets from this.
+    byStatus: {
+      draft: counts.draft,
+      under_review: counts.underReview,
+      changes_requested: counts.changesRequested,
+      rejected: counts.rejected,
+      approved: counts.approved,
+      scheduled: counts.scheduled,
+      live: counts.live,
+      under_evaluation: counts.underEvaluation,
+      results_published: counts.resultsPublished,
+      completed: counts.completed,
+      archived: counts.archived,
+    },
+    // Convenience aggregates for the admin hub headline tiles.
+    approvalQueue: counts.underReview,
+    live: counts.live,
+    scheduled: counts.scheduled,
+    underEvaluation: counts.underEvaluation,
     publicExams: counts.publicExams,
     totalMarks: counts.totalMarks,
     totalAttempts: attempts.totalAttempts,
@@ -515,7 +934,9 @@ export async function getExamStatsForTenant(
 }
 
 export async function listAvailableExamsForStudent(studentId: string, tenantId: string) {
-  // Private exams in classes the student belongs to
+  // Private exams in classes the student belongs to, across every
+  // student-visible lifecycle state: `scheduled` (upcoming, locked),
+  // `live` (attemptable), and post-live states (results pending/ready).
   const rows = await db
     .selectDistinct({
       id: exams.id,
@@ -544,7 +965,7 @@ export async function listAvailableExamsForStudent(studentId: string, tenantId: 
     .where(
       and(
         eq(exams.tenantId, tenantId),
-        eq(exams.status, 'published'),
+        inArray(exams.status, [...STUDENT_VISIBLE_STATUSES] as string[]),
         eq(exams.visibility, 'private'),
         eq(classMembers.studentId, studentId),
         eq(classMembers.status, 'approved'),
@@ -552,12 +973,41 @@ export async function listAvailableExamsForStudent(studentId: string, tenantId: 
     )
     .orderBy(desc(exams.createdAt))
 
-  return rows
+  if (rows.length === 0) return rows
+
+  // Attach the student's own attempt state so the UI can tell
+  // "not started / in progress / submitted / result ready" apart per exam.
+  const sessions = await db
+    .select({
+      id: examSessions.id,
+      examId: examSessions.examId,
+      status: examSessions.status,
+      attemptNumber: examSessions.attemptNumber,
+      startedAt: examSessions.startedAt,
+      submittedAt: examSessions.submittedAt,
+    })
+    .from(examSessions)
+    .where(
+      and(
+        eq(examSessions.studentId, studentId),
+        inArray(examSessions.examId, rows.map((r) => r.id)),
+      ),
+    )
+    .orderBy(desc(examSessions.startedAt))
+
+  const byExam = new Map<string, typeof sessions>()
+  for (const s of sessions) {
+    const list = byExam.get(s.examId)
+    if (list) list.push(s)
+    else byExam.set(s.examId, [s])
+  }
+
+  return rows.map((r) => ({ ...r, mySessions: byExam.get(r.id) ?? [] }))
 }
 
 export async function listPublicExams(filters?: { gradeLevel?: string; subjectId?: string }) {
   const conditions = [
-    eq(exams.status, 'published'),
+    eq(exams.status, 'live'),
     inArray(exams.visibility, ['public_free', 'public_paid']),
   ]
   if (filters?.gradeLevel) conditions.push(eq(exams.gradeLevel, filters.gradeLevel))
@@ -584,7 +1034,14 @@ export async function getExamFull(id: string, tenantId: string) {
     .where(eq(questions.examId, id))
     .orderBy(asc(questions.order))
 
-  return { ...exam, questions: qs }
+  // Approval/lifecycle timeline for the Test Overview (PRD).
+  const statusHistory = await db
+    .select()
+    .from(examStatusHistory)
+    .where(eq(examStatusHistory.examId, id))
+    .orderBy(asc(examStatusHistory.createdAt))
+
+  return { ...exam, questions: qs, statusHistory }
 }
 
 // Substitutes each question's body with its language variant when one exists for
@@ -602,11 +1059,14 @@ function localizeQuestions<T extends { body: string; languageVariants?: Record<s
 export async function getExamForStudent(id: string, studentId: string, lang?: string) {
   const [exam] = await db.select().from(exams).where(eq(exams.id, id)).limit(1)
   if (!exam) throw Errors.NOT_FOUND('Exam')
-  if (exam.status !== 'published')
+  if (!STUDENT_VISIBLE_STATUSES.has(exam.status as ExamStatus))
     throw new AppError('VALIDATION', 'This exam is not available', 422)
 
   const hasAccess = await canStudentAccess(studentId, id)
   if (!hasAccess) throw new AppError('FORBIDDEN', 'You do not have access to this exam', 403)
+
+  // Upcoming exam: metadata only — questions stay hidden until it goes live.
+  if (exam.status === 'scheduled') return { ...exam, questions: [] }
 
   const qs = await db
     .select({
@@ -640,7 +1100,7 @@ export async function canStudentAccess(studentId: string, examId: string): Promi
     .where(eq(exams.id, examId))
     .limit(1)
 
-  if (!exam || exam.status !== 'published') return false
+  if (!exam || !STUDENT_VISIBLE_STATUSES.has(exam.status as ExamStatus)) return false
 
   switch (exam.visibility) {
     case 'public_free':
@@ -686,7 +1146,7 @@ export async function getPublicExamPreview(id: string) {
     .where(and(eq(exams.id, id), inArray(exams.visibility, ['public_free', 'public_paid'])))
     .limit(1)
   if (!exam) throw Errors.NOT_FOUND('Exam')
-  if (exam.status !== 'published') throw Errors.NOT_FOUND('Exam')
+  if (exam.status !== 'live') throw Errors.NOT_FOUND('Exam')
   return exam
 }
 
@@ -697,7 +1157,7 @@ export async function getPublicExamForStudent(id: string, studentId: string, lan
     .where(and(eq(exams.id, id), inArray(exams.visibility, ['public_free', 'public_paid'])))
     .limit(1)
   if (!exam) throw Errors.NOT_FOUND('Exam')
-  if (exam.status !== 'published')
+  if (exam.status !== 'live')
     throw new AppError('VALIDATION', 'This exam is not available', 422)
 
   const hasAccess = await canStudentAccess(studentId, id)

@@ -1,5 +1,5 @@
 export {
-  createExam, updateExam, publishExam, archiveExam,
+  createExam, updateExam, submitForReview, transitionExam, archiveExam,
   setExamChapters, linkExamToClass, unlinkExamFromClass, listExamClasses,
   addQuestion, updateQuestion, removeQuestion, reorderQuestions,
   listExamsForTenant, listAvailableExamsForStudent, listPublicExams,

@@ -37,15 +37,46 @@ export const exams = pgTable('exams', {
   visibility: varchar('visibility', { length: 20 }).notNull().default('private'),
   price: numeric('price', { precision: 10, scale: 2 }),
   maxAttempts: integer('max_attempts').notNull().default(1),
-  // 'draft' | 'published' | 'archived'
+  // Teacher→admin approval / scheduling / live / evaluation lifecycle (PRD v1).
+  // 'draft' | 'under_review' | 'changes_requested' | 'rejected' | 'approved'
+  // | 'scheduled' | 'live' | 'under_evaluation' | 'results_published'
+  // | 'completed' | 'archived'  (see ExamStatus in exam.types.ts)
   status: varchar('status', { length: 20 }).notNull().default('draft'),
   totalMarks: integer('total_marks').notNull().default(0),
+  // Optional quality/coverage score for the Test Overview. Null until computed.
+  qualityScore: integer('quality_score'),
   publishedAt: timestamp('published_at', { withTimezone: true }),
   scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
   endsAt: timestamp('ends_at', { withTimezone: true }),
+  // ── Approval-lifecycle timestamps & audit ────────────────────────────────
+  // Teacher submitted for review (draft/changes_requested → under_review).
+  submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  // Admin (coaching_owner) who last approved/rejected/requested changes.
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  // Remarks attached to the last review decision (changes_requested / rejected).
+  reviewRemarks: text('review_remarks'),
+  // Teacher published results (under_evaluation → results_published).
+  resultsPublishedAt: timestamp('results_published_at', { withTimezone: true }),
+  // Lifecycle finished (results_published → completed).
+  completedAt: timestamp('completed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('exams_tenant_id_idx').on(t.tenantId)])
+
+// ── Exam status history ─────────────────────────────────────────────────────
+// One row per status change — powers the PRD "timeline" and approval remarks.
+// `fromStatus` is null for the initial creation; `actorId` is null for
+// system/worker-driven transitions (scheduled→live, live→under_evaluation).
+export const examStatusHistory = pgTable('exam_status_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  examId: uuid('exam_id').notNull().references(() => exams.id, { onDelete: 'cascade' }),
+  fromStatus: varchar('from_status', { length: 20 }),
+  toStatus: varchar('to_status', { length: 20 }).notNull(),
+  actorId: uuid('actor_id').references(() => users.id),
+  remarks: text('remarks'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('exam_status_history_exam_id_idx').on(t.examId)])
 
 // ── Exam scope linkages ────────────────────────────────────────────────────
 

@@ -21,6 +21,9 @@ describe('createReportForSession — happy path', () => {
       tenantId: tenant.id,
       createdBy: owner.id,
       totalMarks: 30,
+      // Report is read back via getReportForStudent, which the results-visibility
+      // gate blocks for private exams until results are published/completed.
+      status: 'completed',
     })
     const objQ = await createTestQuestion({
       examId: exam.id, tenantId: tenant.id, order: 1, type: 'mcq_single', marks: 10,
@@ -89,7 +92,7 @@ describe('createReportForSession — happy path', () => {
     expect(subjItem!.imageUrl).toContain('cloudinary')
   })
 
-  it('dispatches a result_ready notification to the student', async () => {
+  it('dispatches a result_ready notification for a PUBLIC (self-paced) exam', async () => {
     // report.service.ts imports dispatch from `@modules/notification/index.js`
     // — must grab the spy from the same path so we share the mocked module.
     const { dispatch } = await import('@modules/notification/index.js')
@@ -97,7 +100,9 @@ describe('createReportForSession — happy path', () => {
     mockedDispatch.mockClear()
 
     const { tenant, owner, student } = await seedTenantWithUsers()
-    const exam = await createTestExam({ tenantId: tenant.id, createdBy: owner.id, totalMarks: 10 })
+    const exam = await createTestExam({
+      tenantId: tenant.id, createdBy: owner.id, totalMarks: 10, visibility: 'public_free',
+    })
     await createTestQuestion({ examId: exam.id, tenantId: tenant.id, marks: 10 })
     const session = await createTestSession({
       examId: exam.id, studentId: student.id, tenantId: tenant.id,
@@ -111,6 +116,28 @@ describe('createReportForSession — happy path', () => {
     expect(call.type).toBe('result_ready')
     expect((call.recipients as { userIds: string[] }).userIds).toContain(student.id)
     expect(call.data.body).toContain('10 out of 10')
+  })
+
+  it('does NOT notify for a PRIVATE exam — that fires from the teacher publish step', async () => {
+    // Private (coaching) exams gate results behind results_published; the
+    // report is still computed, but the student is not told here.
+    const { dispatch } = await import('@modules/notification/index.js')
+    const mockedDispatch = vi.mocked(dispatch)
+    mockedDispatch.mockClear()
+
+    const { tenant, owner, student } = await seedTenantWithUsers()
+    const exam = await createTestExam({
+      tenantId: tenant.id, createdBy: owner.id, totalMarks: 10, visibility: 'private',
+    })
+    await createTestQuestion({ examId: exam.id, tenantId: tenant.id, marks: 10 })
+    const session = await createTestSession({
+      examId: exam.id, studentId: student.id, tenantId: tenant.id,
+      totalMarks: 10, autoScore: 10, status: 'evaluated',
+    })
+
+    const { created } = await createReportForSession(session.id)
+    expect(created).toBe(true)                 // report is still generated
+    expect(mockedDispatch).not.toHaveBeenCalled() // but no result_ready notification
   })
 })
 
@@ -179,7 +206,9 @@ describe('createReportForSession — tenant isolation', () => {
 describe('createReportForSession — edge cases', () => {
   it('handles a session with no AI evaluation (objective-only)', async () => {
     const { tenant, owner, student } = await seedTenantWithUsers()
-    const exam = await createTestExam({ tenantId: tenant.id, createdBy: owner.id, totalMarks: 10 })
+    const exam = await createTestExam({
+      tenantId: tenant.id, createdBy: owner.id, totalMarks: 10, status: 'completed',
+    })
     const q = await createTestQuestion({
       examId: exam.id, tenantId: tenant.id, type: 'mcq_single', marks: 10,
     })
@@ -209,7 +238,9 @@ describe('createReportForSession — edge cases', () => {
 
   it('handles a session where the student skipped some questions', async () => {
     const { tenant, owner, student } = await seedTenantWithUsers()
-    const exam = await createTestExam({ tenantId: tenant.id, createdBy: owner.id, totalMarks: 20 })
+    const exam = await createTestExam({
+      tenantId: tenant.id, createdBy: owner.id, totalMarks: 20, status: 'completed',
+    })
     const q1 = await createTestQuestion({
       examId: exam.id, tenantId: tenant.id, type: 'mcq_single', marks: 10, order: 1,
     })

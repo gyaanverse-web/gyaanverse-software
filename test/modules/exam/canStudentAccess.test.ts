@@ -17,7 +17,7 @@ describe('canStudentAccess — public_free', () => {
       tenantId: tenant.id,
       createdBy: owner.id,
       visibility: 'public_free',
-      status: 'published',
+      status: 'live',
     })
     const anyStudent = await createTestUser({ role: 'student' })
 
@@ -45,7 +45,7 @@ describe('canStudentAccess — public_paid', () => {
       tenantId: tenant.id,
       createdBy: owner.id,
       visibility: 'public_paid',
-      status: 'published',
+      status: 'live',
       price: '99.00',
     })
     const anyStudent = await createTestUser({ role: 'student' })
@@ -59,7 +59,7 @@ describe('canStudentAccess — public_paid', () => {
       tenantId: tenant.id,
       createdBy: owner.id,
       visibility: 'public_paid',
-      status: 'published',
+      status: 'live',
       price: '99.00',
     })
     const anyStudent = await createTestUser({ role: 'student' })
@@ -74,7 +74,7 @@ describe('canStudentAccess — public_paid', () => {
       tenantId: tenant.id,
       createdBy: owner.id,
       visibility: 'public_paid',
-      status: 'published',
+      status: 'live',
       price: '99.00',
     })
     const buyer = await createTestUser({ role: 'student' })
@@ -93,7 +93,7 @@ describe('canStudentAccess — private', () => {
       tenantId: tenant.id,
       createdBy: owner.id,
       visibility: 'private',
-      status: 'published',
+      status: 'live',
     })
     // Class exists but exam is not linked to it; or student not enrolled.
     const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
@@ -109,7 +109,7 @@ describe('canStudentAccess — private', () => {
       tenantId: tenant.id,
       createdBy: owner.id,
       visibility: 'private',
-      status: 'published',
+      status: 'live',
     })
     const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
     await enrollStudent({ classId: cls.id, studentId: student.id, status: 'approved' })
@@ -124,7 +124,7 @@ describe('canStudentAccess — private', () => {
       tenantId: tenant.id,
       createdBy: owner.id,
       visibility: 'private',
-      status: 'published',
+      status: 'live',
     })
     const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
     await linkExamToClass(exam.id, cls.id)
@@ -148,7 +148,7 @@ describe('canStudentAccess — private', () => {
       tenantId: b.tenant.id,
       createdBy: b.owner.id,
       visibility: 'private',
-      status: 'published',
+      status: 'live',
     })
     const classInB = await createTestClass({ tenantId: b.tenant.id, teacherId: b.teacher.id })
     await linkExamToClass(examInB.id, classInB.id)

@@ -16,6 +16,13 @@ import { evaluationJobs, questionResults } from '@modules/evaluation/evaluation.
 import { examPurchases, payments } from '@modules/payment/payment.schema.js'
 import { invites } from '@modules/invite/invite.schema.js'
 import type { PlanName } from '@config/plans.js'
+import type { ExamStatus } from '@modules/exam/exam.types.js'
+
+// Lifecycle states in which an exam has become student-visible at least once,
+// so `publishedAt` should be stamped (mirrors transitionExam's → live rule).
+const PUBLISHED_STATES = new Set<ExamStatus>([
+  'live', 'under_evaluation', 'results_published', 'completed', 'archived',
+])
 
 let _counter = 0
 const uniq = () => `t${Date.now()}${_counter++}`
@@ -135,13 +142,18 @@ export async function createTestExam(overrides: {
   createdBy: string
   title?: string
   visibility?: 'private' | 'public_free' | 'public_paid'
-  status?: 'draft' | 'published' | 'archived'
+  // Full 11-state lifecycle (PRD v1). Defaults to `live` — the closest analog to
+  // the retired `published` (student-attemptable, marketplace-visible).
+  status?: ExamStatus
   price?: string | null
   durationMins?: number
   totalMarks?: number
   maxAttempts?: number
   subjectId?: string
+  scheduledAt?: Date | null
+  endsAt?: Date | null
 }) {
+  const status = overrides.status ?? 'live'
   const [e] = await db
     .insert(exams)
     .values({
@@ -152,10 +164,12 @@ export async function createTestExam(overrides: {
       totalMarks: overrides.totalMarks ?? 100,
       maxAttempts: overrides.maxAttempts ?? 1,
       visibility: overrides.visibility ?? 'private',
-      status: overrides.status ?? 'published',
+      status,
       price: overrides.price ?? null,
       subjectId: overrides.subjectId ?? null,
-      publishedAt: overrides.status === 'draft' ? null : new Date(),
+      scheduledAt: overrides.scheduledAt ?? null,
+      endsAt: overrides.endsAt ?? null,
+      publishedAt: PUBLISHED_STATES.has(status) ? new Date() : null,
     })
     .returning()
   return e

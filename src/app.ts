@@ -13,6 +13,7 @@ import { notificationRoutes } from './modules/notification/notification.routes.j
 import { evaluationRoutes } from './modules/evaluation/evaluation.routes.js'
 import { storageRoutes } from './modules/storage/storage.routes.js'
 import { reportRoutes } from './modules/report/report.routes.js'
+import { adminRoutes } from './modules/admin/admin.routes.js'
 import { createBoard } from './config/bull-board.js'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
@@ -121,6 +122,7 @@ export async function buildApp() {
   await app.register(evaluationRoutes)
   await app.register(storageRoutes)
   await app.register(reportRoutes)
+  await app.register(adminRoutes)
 
   if (isDev) {
     const board = createBoard()

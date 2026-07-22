@@ -9,7 +9,42 @@ export type QuestionType =
   | 'fill_blanks'
 
 export type ExamVisibility = 'private' | 'public_free' | 'public_paid'
-export type ExamStatus = 'draft' | 'published' | 'archived'
+
+// Teacher→admin approval / scheduling / live / evaluation lifecycle (PRD v1).
+// Stored lowercase snake_case to match the existing status convention
+// (`draft`/`archived` are carried over; `published` is retired in favour of the
+// explicit lifecycle below). Display labels are mapped in the UI layer.
+//   draft            → teacher authoring
+//   under_review     → submitted, awaiting admin (owner)
+//   changes_requested→ admin bounced back with remarks
+//   rejected         → admin rejected with remarks
+//   approved         → admin approved (pre-scheduling)
+//   scheduled        → date/time set, waiting to start
+//   live             → in progress (students can attempt)
+//   under_evaluation → window closed, sessions being evaluated
+//   results_published→ teacher published results (student-visible)
+//   completed        → lifecycle finished
+//   archived         → retired from active lists
+export type ExamStatus =
+  | 'draft'
+  | 'under_review'
+  | 'changes_requested'
+  | 'rejected'
+  | 'approved'
+  | 'scheduled'
+  | 'live'
+  | 'under_evaluation'
+  | 'results_published'
+  | 'completed'
+  | 'archived'
+
+// Ordered list of all lifecycle states — handy for validation and iteration.
+export const EXAM_STATUSES: readonly ExamStatus[] = [
+  'draft', 'under_review', 'changes_requested', 'rejected', 'approved',
+  'scheduled', 'live', 'under_evaluation', 'results_published', 'completed',
+  'archived',
+] as const
+
 export type ExamScopeType = 'single_chapter' | 'multi_chapter' | 'full_subject' | 'full_syllabus' | 'custom'
 
 // ── Question payload shapes ────────────────────────────────────────────────
@@ -84,11 +119,38 @@ export interface Exam {
   maxAttempts: number
   status: ExamStatus
   totalMarks: number
+  // Optional quality/coverage score surfaced on the Test Overview (PRD).
+  qualityScore: number | null
   publishedAt: Date | null
   scheduledAt: Date | null
   endsAt: Date | null
+  // ── Approval-lifecycle timestamps & audit ────────────────────────────────
+  // Set when the teacher submits for review (draft/changes_requested → under_review).
+  submittedAt: Date | null
+  // Admin (coaching_owner) who last approved/rejected/requested changes.
+  reviewedBy: string | null
+  reviewedAt: Date | null
+  // Remarks attached to the last review decision (changes_requested / rejected).
+  reviewRemarks: string | null
+  // Set when the teacher publishes results (under_evaluation → results_published).
+  resultsPublishedAt: Date | null
+  // Set when the lifecycle finishes (results_published → completed).
+  completedAt: Date | null
   createdAt: Date
   updatedAt: Date
+}
+
+// One row per status change — powers the PRD "timeline" and approval remarks.
+// `fromStatus` is null for the initial creation; `actorId` is null for
+// system/worker-driven transitions (scheduled→live, live→under_evaluation).
+export interface ExamStatusHistory {
+  id: string
+  examId: string
+  fromStatus: ExamStatus | null
+  toStatus: ExamStatus
+  actorId: string | null
+  remarks: string | null
+  createdAt: Date
 }
 
 export type DraftStatus = 'pending' | 'kept' | 'discarded'

@@ -25,7 +25,7 @@ describe('startSession', () => {
   it('happy path: creates an in_progress session with attempt #1', async () => {
     const { tenant, owner, teacher, student } = await seedTenantWithUsers()
     const exam = await createTestExam({
-      tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'published',
+      tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'live',
       durationMins: 60, totalMarks: 100, maxAttempts: 2,
     })
     const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
@@ -44,7 +44,7 @@ describe('startSession', () => {
     expect(session.expiresAt.getTime()).toBeLessThan(expectedExpiry + 5000)
   })
 
-  it('rejects unpublished exams', async () => {
+  it('rejects exams that are not live', async () => {
     const { tenant, owner, student } = await seedTenantWithUsers()
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, status: 'draft',
@@ -58,7 +58,7 @@ describe('startSession', () => {
     const { tenant, owner, teacher, student } = await seedTenantWithUsers()
     const future = new Date(Date.now() + 60 * 60 * 1000)
     const exam = await createTestExam({
-      tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'published',
+      tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'live',
     })
     // Patch scheduledAt to future
     await db.update(exams).set({ scheduledAt: future }).where(eq(exams.id, exam.id))
@@ -76,7 +76,7 @@ describe('startSession', () => {
     const { tenant, owner, teacher, student } = await seedTenantWithUsers()
     const past = new Date(Date.now() - 60 * 60 * 1000)
     const exam = await createTestExam({
-      tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'published',
+      tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'live',
     })
     await db.update(exams).set({ endsAt: past }).where(eq(exams.id, exam.id))
 
@@ -92,7 +92,7 @@ describe('startSession', () => {
   it('CRITICAL: rejects a student who is not enrolled in any linked class (private exam)', async () => {
     const { tenant, owner, student } = await seedTenantWithUsers()
     const exam = await createTestExam({
-      tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'published',
+      tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'live',
     })
     // student is in the tenant but NOT in any class linked to the exam
     await expect(startSession(student.id, exam.id, tenant.id)).rejects.toMatchObject({
@@ -103,7 +103,7 @@ describe('startSession', () => {
   it('enforces maxAttempts', async () => {
     const { tenant, owner, student } = await seedTenantWithUsers()
     const exam = await createTestExam({
-      tenantId: tenant.id, createdBy: owner.id, visibility: 'public_free', status: 'published',
+      tenantId: tenant.id, createdBy: owner.id, visibility: 'public_free', status: 'live',
       maxAttempts: 2,
     })
 
@@ -131,7 +131,7 @@ describe('startSession', () => {
   it('rejects when an in-progress session already exists', async () => {
     const { tenant, owner, student } = await seedTenantWithUsers()
     const exam = await createTestExam({
-      tenantId: tenant.id, createdBy: owner.id, visibility: 'public_free', status: 'published',
+      tenantId: tenant.id, createdBy: owner.id, visibility: 'public_free', status: 'live',
       maxAttempts: 5,
     })
     await startSession(student.id, exam.id, tenant.id)

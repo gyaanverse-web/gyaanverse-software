@@ -2,6 +2,12 @@ export type NotificationType =
   | 'exam_assigned'
   | 'exam_starting_soon'
   | 'result_ready'
+  // Approval-lifecycle (PRD v1)
+  | 'exam_submitted'          // → admin/owner: teacher submitted for review
+  | 'exam_scheduled'          // → teacher: approved & scheduled
+  | 'exam_changes_requested'  // → teacher: bounced back with remarks
+  | 'exam_rejected'           // → teacher: rejected with remarks
+  | 'results_published'       // → students: teacher published results
   | 'class_update'
   | 'invite_received'
   | 'invite_accepted'
@@ -87,6 +93,11 @@ export const NOTIFICATION_CONFIG: Record<NotificationType, NotificationConfig> =
   exam_assigned:      { priority: 'high',   email: true,  sms: false },
   exam_starting_soon: { priority: 'urgent', email: false, sms: true  },
   result_ready:       { priority: 'high',   email: true,  sms: false },
+  exam_submitted:         { priority: 'high',   email: true,  sms: false },
+  exam_scheduled:         { priority: 'high',   email: true,  sms: false },
+  exam_changes_requested: { priority: 'high',   email: true,  sms: false },
+  exam_rejected:          { priority: 'high',   email: true,  sms: false },
+  results_published:      { priority: 'high',   email: true,  sms: false },
   class_update:       { priority: 'normal', email: false, sms: false },
   invite_received:    { priority: 'high',   email: true,  sms: false },
   invite_accepted:    { priority: 'normal', email: true,  sms: false },

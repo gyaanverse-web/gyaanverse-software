@@ -10,7 +10,7 @@ import {
   generateExam, keepDraftQuestion, discardDraftQuestion,
   regenerateDraftQuestion, editDraftQuestion, finalizeGeneration,
 } from '@modules/exam/index.js'
-import { addQuestion, publishExam, reorderQuestions, getPublicExamForStudent } from '@modules/exam/exam.service.js'
+import { addQuestion, submitForReview, reorderQuestions, getPublicExamForStudent } from '@modules/exam/exam.service.js'
 import {
   seedTenantWithUsers, createTestUser, createTestExam, createTestSession, createSessionAnswer,
   createTestClass, linkExamToClass,
@@ -243,7 +243,7 @@ describe('language variants', () => {
 
   it('serves the variant body for the requested language', async () => {
     const { tenant, owner, student } = await seedTenantWithUsers('pro')
-    const exam = await createTestExam({ tenantId: tenant.id, createdBy: owner.id, visibility: 'public_free', status: 'published' })
+    const exam = await createTestExam({ tenantId: tenant.id, createdBy: owner.id, visibility: 'public_free', status: 'live' })
     await db.insert(questions).values({
       examId: exam.id, tenantId: tenant.id, order: 1, type: 'mcq_single', body: 'English body',
       languageVariants: { hi: 'हिंदी प्रश्न' },
@@ -367,16 +367,17 @@ describe('draft review', () => {
     expect(Number(row.rate)).toBeCloseTo(0.5, 4)
   })
 
-  it('blocks draft review once the exam is published', async () => {
+  it('blocks draft review once the exam leaves draft (submitted for review)', async () => {
     const { tenant, owner, exam, qs } = await generateThree()
-    // Keep all three so finalize leaves a publishable exam.
+    // Keep all three so finalize leaves a submittable exam.
     for (const q of qs) await keepDraftQuestion(exam.id, q.id, tenant.id, owner.id, 'coaching_owner')
     await finalizeGeneration(exam.id, tenant.id, owner.id, 'coaching_owner')
     // Generated exams are private, so they must be assigned to a class before
-    // they can be published.
+    // they can be submitted for review.
     const cls = await createTestClass({ tenantId: tenant.id, teacherId: owner.id })
     await linkExamToClass(exam.id, cls.id)
-    await publishExam(exam.id, tenant.id, owner.id, 'coaching_owner')
+    const submitted = await submitForReview(exam.id, tenant.id, owner.id, 'coaching_owner')
+    expect(submitted.status).toBe('under_review')
 
     await expect(
       discardDraftQuestion(exam.id, qs[0].id, tenant.id, owner.id, 'coaching_owner'),

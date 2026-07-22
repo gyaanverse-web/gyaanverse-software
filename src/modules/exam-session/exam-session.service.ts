@@ -3,7 +3,7 @@ import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
 import { examSessions, sessionAnswers } from './exam-session.schema.js'
 import { exams, questions } from '../exam/exam.schema.js'
-import { canStudentAccess } from '../exam/exam.service.js'
+import { canStudentAccess, assertResultsVisible } from '../exam/exam.service.js'
 import { enqueueEvaluation } from '../evaluation/evaluation.service.js'
 import { gradeQuestion, isObjectiveType } from './exam-session.grader.js'
 import { validateStudentAnswer } from '../exam/exam.validators.js'
@@ -19,7 +19,7 @@ export async function startSession(
 ) {
   const [exam] = await db.select().from(exams).where(eq(exams.id, examId)).limit(1)
   if (!exam) throw Errors.NOT_FOUND('Exam')
-  if (exam.status !== 'published')
+  if (exam.status !== 'live')
     throw new AppError('VALIDATION', 'This exam is not currently available', 422)
 
   // Scheduled window check
@@ -157,6 +157,17 @@ export async function submitSession(sessionId: string, studentId: string) {
   if (session.status !== 'in_progress')
     throw new AppError('VALIDATION', 'Session is already submitted', 422)
 
+  return finalizeSession(session)
+}
+
+/**
+ * Grade + finalize an already-loaded, confirmed-`in_progress` session. Shared by
+ * the student submit path and the admin force-submit / end-exam controls so all
+ * three routes run identical scoring, report, and analytics logic.
+ */
+async function finalizeSession(session: typeof examSessions.$inferSelect) {
+  const sessionId = session.id
+
   // Load questions and answers
   const examQuestions = await db
     .select()
@@ -249,6 +260,40 @@ export async function submitSession(sessionId: string, studentId: string) {
   return updated
 }
 
+// ── Admin / system force-submit ──────────────────────────────────────────────
+
+/**
+ * Force-submit a single session regardless of its owner. Idempotent: a session
+ * that is not `in_progress` is returned unchanged. Used by admin live controls
+ * and by end-exam.
+ */
+export async function forceSubmitSession(sessionId: string) {
+  const [session] = await db
+    .select()
+    .from(examSessions)
+    .where(eq(examSessions.id, sessionId))
+    .limit(1)
+  if (!session) throw Errors.NOT_FOUND('Session')
+  if (session.status !== 'in_progress') return session
+  return finalizeSession(session)
+}
+
+/**
+ * Force-submit every still-active (`in_progress`) session for an exam. Called
+ * when an admin ends an exam early so no attempt is left ungraded.
+ */
+export async function forceSubmitActiveSessions(examId: string) {
+  const active = await db
+    .select({ id: examSessions.id })
+    .from(examSessions)
+    .where(and(eq(examSessions.examId, examId), eq(examSessions.status, 'in_progress')))
+
+  for (const s of active) {
+    await forceSubmitSession(s.id)
+  }
+  return { submitted: active.length }
+}
+
 // ── Get session / results ──────────────────────────────────────────────────
 
 export async function getSession(sessionId: string, studentId: string) {
@@ -276,6 +321,9 @@ export async function getResults(sessionId: string, studentId: string) {
   if (!session) throw Errors.NOT_FOUND('Session')
   if (session.status === 'in_progress')
     throw new AppError('VALIDATION', 'Session has not been submitted yet', 422)
+
+  // Scores stay hidden for private exams until the teacher publishes results.
+  await assertResultsVisible(session.examId)
 
   const answers = await db
     .select()

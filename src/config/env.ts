@@ -33,7 +33,7 @@ export const env = {
   RAZORPAY_KEY_SECRET: requireEnv('RAZORPAY_KEY_SECRET'),
   RAZORPAY_WEBHOOK_SECRET: requireEnv('RAZORPAY_WEBHOOK_SECRET'),
   APP_DOMAIN: requireEnv('APP_DOMAIN'),
-  EVAL_ENGINE_URL: process.env.EVAL_ENGINE_URL ?? 'http://localhost:5000',
+  EVAL_ENGINE_URL: process.env.EVAL_ENGINE_URL ?? 'http://localhost:5000/context_and_step_itr2',
   EVAL_ENGINE_TIMEOUT_MS: parseInt(process.env.EVAL_ENGINE_TIMEOUT_MS ?? '120000', 10),
   EVAL_DEFAULT_COLLECTION: process.env.EVAL_DEFAULT_COLLECTION ?? '',
   NODE_ENV: process.env.NODE_ENV ?? 'development',

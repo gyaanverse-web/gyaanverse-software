@@ -9,6 +9,7 @@ import { examSessions, sessionAnswers } from '@modules/exam-session/exam-session
 import { exams, questions } from '@modules/exam/exam.schema.js'
 import { assertWithinLimit } from '@modules/billing/billing.service.js'
 import { createReportForSession } from '@modules/report/report.service.js'
+import { assertResultsVisible } from '@modules/exam/exam.service.js'
 import { buildOcrFriendlyUrl } from '@modules/storage/index.js'
 import {
   evaluateSteps,
@@ -287,12 +288,15 @@ export async function getJobForTenant(jobId: string, tenantId: string) {
 
 export async function getSessionEvaluation(sessionId: string, studentId: string) {
   const [session] = await db
-    .select({ id: examSessions.id, studentId: examSessions.studentId })
+    .select({ id: examSessions.id, studentId: examSessions.studentId, examId: examSessions.examId })
     .from(examSessions)
     .where(eq(examSessions.id, sessionId))
     .limit(1)
   if (!session) throw Errors.NOT_FOUND('Session')
   if (session.studentId !== studentId) throw Errors.FORBIDDEN()
+
+  // Hide AI feedback/scores for private exams until results are published.
+  await assertResultsVisible(session.examId)
 
   const job = await getJobStatus(sessionId)
   if (!job) return null
