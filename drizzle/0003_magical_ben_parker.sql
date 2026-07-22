@@ -1,0 +1,2 @@
+ALTER TABLE "tenants" ADD CONSTRAINT "tenants_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "memberships_user_tenant_uniq" ON "memberships" USING btree ("user_id","tenant_id");
