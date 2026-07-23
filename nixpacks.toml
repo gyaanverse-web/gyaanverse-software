@@ -1,0 +1,9 @@
+# Railway/Nixpacks build config.
+#
+# We set NODE_ENV=production as a service variable so the app uses production
+# auth/cookie behaviour at runtime. But NODE_ENV=production also makes `npm ci`
+# omit devDependencies at INSTALL time — which drops typescript, tsc-alias and the
+# @types packages, so `npm run build` (tsc) fails on Railway even though it builds
+# locally. Force dev dependencies in during install so the TypeScript build can run.
+[phases.install]
+cmds = ["npm ci --include=dev"]
