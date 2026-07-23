@@ -1,1 +1,7 @@
-export { enrollStudent, generateJoinCode, revokeJoinCode, isEnrolled, getEnrollments } from './membership.service.js'
+export {
+  generateCoachingJoinCode,
+  listCoachingJoinCodes,
+  revokeCoachingJoinCode,
+  previewCoachingJoinCode,
+  useCoachingJoinCode,
+} from './membership.service.js'

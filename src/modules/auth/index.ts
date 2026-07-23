@@ -1,1 +1,1 @@
-export { getCurrentUser, sendOtp, verifyOtp } from './auth.service.js'
+export { getCurrentUser } from './auth.service.js'

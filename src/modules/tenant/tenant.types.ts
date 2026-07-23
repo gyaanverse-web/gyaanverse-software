@@ -14,3 +14,12 @@ export interface TenantSettings {
   allowPublicMocks: boolean
   customDomain: string | null
 }
+
+export interface Member {
+  userId: string
+  role: string
+  joinedAt: Date
+  name: string
+  phone: string | null
+  email: string | null
+}

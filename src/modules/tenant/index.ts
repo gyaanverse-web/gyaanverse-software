@@ -1,1 +1,13 @@
-export { getTenantBySlug, getTenantById, createTenant, updateSettings } from './tenant.service.js'
+export {
+  getTenantBySlug,
+  getTenantById,
+  createTenant,
+  updateSettings,
+  registerCoaching,
+  addTeacher,
+  joinAsStudent,
+  getMyTenant,
+  listMembers,
+  removeMember,
+  upgradePlan,
+} from './tenant.service.js'

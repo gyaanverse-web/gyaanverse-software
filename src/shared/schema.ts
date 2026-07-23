@@ -2,9 +2,11 @@
 // Add imports as modules are built out
 
 export * from '../modules/tenant/tenant.schema.js'
+export * from '../modules/invite/invite.schema.js'
 export * from '../modules/auth/auth.schema.js'
 export * from '../modules/membership/membership.schema.js'
 export * from '../modules/class/class.schema.js'
+export * from '../modules/question-bank/question-bank.schema.js'
 export * from '../modules/exam/exam.schema.js'
 export * from '../modules/exam-session/exam-session.schema.js'
 export * from '../modules/evaluation/evaluation.schema.js'

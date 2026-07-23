@@ -1,1 +1,1 @@
-export { startSession, saveAnswer, submitSession, getSession, hasAttempted } from './exam-session.service.js'
+export { startSession, saveAnswer, submitSession, getSession, getResults, listSessionsForExam } from './exam-session.service.js'
