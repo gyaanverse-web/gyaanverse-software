@@ -12,6 +12,22 @@ function devOptional(key: string): string {
   return process.env[key] ?? ''
 }
 
+const APP_DOMAIN = requireEnv('APP_DOMAIN')
+
+// Base URL of the Next.js frontend.
+//
+// Every user-facing link we email out (email verification, password reset,
+// teacher invites) MUST point at a page here — never at the API host, which
+// serves JSON only and answers anything else with "Route GET:/ not found".
+//
+// dev:  the app runs on app.lvh.me:3000 (see auth.ts for why not localhost)
+// prod: FRONTEND_URL is set explicitly per environment; APP_DOMAIN is the
+//       fallback so a missing var degrades to the right domain, not localhost.
+const FRONTEND_URL = (
+  process.env.FRONTEND_URL ??
+  (process.env.NODE_ENV === 'production' ? `https://${APP_DOMAIN}` : 'http://app.lvh.me:3000')
+).replace(/\/+$/, '')
+
 export const env = {
   DATABASE_URL: requireEnv('DATABASE_URL'),
   REDIS_URL: requireEnv('REDIS_URL'),
@@ -28,11 +44,11 @@ export const env = {
   MSG91_SENDER_ID: devOptional('MSG91_SENDER_ID'),
   MAILPIT_HOST: process.env.MAILPIT_HOST ?? 'localhost',
   MAILPIT_PORT: parseInt(process.env.MAILPIT_PORT ?? '1025', 10),
-  FRONTEND_URL: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+  FRONTEND_URL,
   RAZORPAY_KEY_ID: requireEnv('RAZORPAY_KEY_ID'),
   RAZORPAY_KEY_SECRET: requireEnv('RAZORPAY_KEY_SECRET'),
   RAZORPAY_WEBHOOK_SECRET: requireEnv('RAZORPAY_WEBHOOK_SECRET'),
-  APP_DOMAIN: requireEnv('APP_DOMAIN'),
+  APP_DOMAIN,
   EVAL_ENGINE_URL: process.env.EVAL_ENGINE_URL ?? 'http://localhost:5000/context_and_step_itr2',
   EVAL_ENGINE_TIMEOUT_MS: parseInt(process.env.EVAL_ENGINE_TIMEOUT_MS ?? '120000', 10),
   EVAL_DEFAULT_COLLECTION: process.env.EVAL_DEFAULT_COLLECTION ?? '',

@@ -9,6 +9,7 @@ import { users } from '../auth/auth.schema.js'
 import { tenants } from '../tenant/tenant.schema.js'
 import { assertWithinLimit } from '../billing/billing.service.js'
 import { dispatch } from '@modules/notification/index.js'
+import { appUrl } from '../../shared/urls.js'
 
 const resend = new Resend(env.RESEND_API_KEY)
 
@@ -19,9 +20,7 @@ function generateToken(): string {
 }
 
 function inviteAcceptUrl(token: string): string {
-  const base =
-    env.NODE_ENV !== 'production' ? env.FRONTEND_URL : `https://${env.APP_DOMAIN}`
-  return `${base}/accept-invite?token=${token}`
+  return appUrl(`/accept-invite?token=${token}`)
 }
 
 async function sendInviteEmail(to: string, tenantName: string, url: string): Promise<void> {
