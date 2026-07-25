@@ -5,6 +5,7 @@ import { db } from '../shared/db.js'
 import { env } from './env.js'
 import { users, sessions, accounts, verifications } from '../modules/auth/auth.schema.js'
 import { sendEmail } from '../modules/notification/channels/email.channel.js'
+import { withFrontendCallback } from '../shared/urls.js'
 
 // In dev, sendEmail() routes to Mailpit (http://localhost:8025 web UI). If
 // Mailpit isn't running the send throws — we log the URL as a fallback so the
@@ -21,7 +22,11 @@ async function sendWithFallback(label: string, to: string, subject: string, html
   }
 }
 
-async function sendVerificationEmail(userEmail: string, url: string): Promise<void> {
+async function sendVerificationEmail(userEmail: string, betterAuthUrl: string): Promise<void> {
+  // The link must hit the API (only it can consume the token), but the page the
+  // user is redirected to afterwards has to be on the frontend — see
+  // withFrontendCallback.
+  const url = withFrontendCallback(betterAuthUrl, '/verify-email')
   await sendWithFallback(
     'EMAIL VERIFICATION',
     userEmail,
@@ -31,7 +36,8 @@ async function sendVerificationEmail(userEmail: string, url: string): Promise<vo
   )
 }
 
-async function sendPasswordResetEmail(userEmail: string, url: string): Promise<void> {
+async function sendPasswordResetEmail(userEmail: string, betterAuthUrl: string): Promise<void> {
+  const url = withFrontendCallback(betterAuthUrl, '/reset-password')
   await sendWithFallback(
     'PASSWORD RESET',
     userEmail,
@@ -144,6 +150,10 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: 8,
     requireEmailVerification: true,
+    // A reset is the recovery path for a compromised account, so any session an
+    // attacker still holds must die with the old password. Off by default in
+    // Better Auth.
+    revokeSessionsOnPasswordReset: true,
     sendResetPassword: async (
       { user, url }: { user: { email: string }; url: string; token: string },
       _request?: Request,

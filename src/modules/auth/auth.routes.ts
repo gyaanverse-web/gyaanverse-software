@@ -65,6 +65,9 @@ export async function authRoutes(app: FastifyInstance) {
           required: ['email'],
         },
       },
+      // Unauthenticated and sends mail on demand — rate limit it like the other
+      // auth endpoints so it can't be used to spam an inbox.
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async (req, reply) => {
       const { email } = (req.body ?? {}) as { email?: string }
@@ -81,6 +84,9 @@ export async function authRoutes(app: FastifyInstance) {
         return reply.send(generic)
       }
 
+      // `redirectTo` only seeds Better Auth's callbackURL — sendPasswordResetEmail
+      // in config/auth.ts rewrites it to the absolute frontend page before the
+      // link is emailed, so the user never lands back on the API host.
       await auth.api.requestPasswordReset({
         body: { email: normalized, redirectTo: '/reset-password' },
       })
@@ -285,8 +291,10 @@ export async function authRoutes(app: FastifyInstance) {
 
       if (emailChanged) {
         try {
+          // No callbackURL here: sendVerificationEmail in config/auth.ts pins
+          // every verification link to the frontend's /verify-email page.
           await auth.api.sendVerificationEmail({
-            body: { email: parsed.data.email!, callbackURL: '/dashboard' },
+            body: { email: parsed.data.email! },
             headers: fromNodeHeaders(req.headers),
           })
         } catch (err) {
