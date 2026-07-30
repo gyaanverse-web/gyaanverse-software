@@ -99,7 +99,10 @@ export const NOTIFICATION_CONFIG: Record<NotificationType, NotificationConfig> =
   exam_rejected:          { priority: 'high',   email: true,  sms: false },
   results_published:      { priority: 'high',   email: true,  sms: false },
   class_update:       { priority: 'normal', email: false, sms: false },
-  invite_received:    { priority: 'high',   email: true,  sms: false },
+  // email:false — invite.service sends its own dedicated invite email (the one
+  // carrying the accept link). Enabling the generic channel here delivered a
+  // second, redundant email to the invitee.
+  invite_received:    { priority: 'high',   email: false, sms: false },
   invite_accepted:    { priority: 'normal', email: true,  sms: false },
   payment_confirmed:  { priority: 'normal', email: true,  sms: false },
   payment_failed:     { priority: 'urgent', email: true,  sms: true  },
