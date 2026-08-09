@@ -1,6 +1,6 @@
 import { Queue } from 'bullmq'
 import IORedis from 'ioredis'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { env } from '@config/env.js'
 import { db } from '@shared/db.js'
 import { AppError, Errors } from '@shared/errors.js'
@@ -320,7 +320,87 @@ export async function getSessionEvaluation(sessionId: string, studentId: string)
   }
 }
 
+// ── Exam-level progress ───────────────────────────────────────────────────
+
+/**
+ * Per-exam evaluation progress, for the teacher's Under Evaluation view.
+ *
+ * This exists because the lifecycle stalls silently otherwise. An exam only
+ * leaves `under_evaluation` when EVERY session is settled, so a single session
+ * whose AI evaluation crashed keeps the whole exam out of the teacher's
+ * "Ready to Publish" bucket — and without this read there is no screen anywhere
+ * that would show them why, or even that anything is wrong. Surfacing
+ * "13 of 15 evaluated, 1 failed" plus a retry turns an invisible stall into
+ * something the teacher can clear themselves.
+ */
+export async function getExamEvaluationProgress(examId: string, tenantId: string) {
+  const [exam] = await db
+    .select({ id: exams.id, status: exams.status })
+    .from(exams)
+    .where(and(eq(exams.id, examId), eq(exams.tenantId, tenantId)))
+    .limit(1)
+  if (!exam) throw Errors.NOT_FOUND('Exam')
+
+  const [counts] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      inProgress: sql<number>`count(*) filter (where ${examSessions.status} = 'in_progress')::int`,
+      awaitingEvaluation: sql<number>`count(*) filter (where ${examSessions.status} = 'submitted')::int`,
+      evaluated: sql<number>`count(*) filter (where ${examSessions.status} = 'evaluated')::int`,
+      abandoned: sql<number>`count(*) filter (where ${examSessions.status} = 'abandoned')::int`,
+    })
+    .from(examSessions)
+    .where(eq(examSessions.examId, examId))
+
+  // Only the latest job per session matters — a retried session has older rows.
+  const failed = await db
+    .selectDistinctOn([evaluationJobs.sessionId], {
+      jobId: evaluationJobs.id,
+      sessionId: evaluationJobs.sessionId,
+      status: evaluationJobs.status,
+      error: evaluationJobs.error,
+      completedAt: evaluationJobs.completedAt,
+    })
+    .from(evaluationJobs)
+    .innerJoin(examSessions, eq(examSessions.id, evaluationJobs.sessionId))
+    .where(and(eq(examSessions.examId, examId), eq(evaluationJobs.tenantId, tenantId)))
+    .orderBy(evaluationJobs.sessionId, desc(evaluationJobs.createdAt))
+
+  const failedJobs = failed.filter((j) => j.status === 'failed')
+
+  return {
+    examId,
+    status: exam.status,
+    sessions: counts,
+    // `pending` mirrors exactly what the lifecycle worker blocks on, so the
+    // number the teacher sees is the number holding the exam back.
+    pending: counts.inProgress + counts.awaitingEvaluation,
+    failedJobs,
+  }
+}
+
 // ── Retry ─────────────────────────────────────────────────────────────────
+
+/**
+ * Re-enqueue every failed evaluation job for an exam. The bulk companion to
+ * `retryJob` — a failing engine usually takes out several sessions at once, and
+ * clearing them one at a time is busywork.
+ */
+export async function retryFailedEvaluationsForExam(examId: string, tenantId: string) {
+  const { failedJobs } = await getExamEvaluationProgress(examId, tenantId)
+
+  const retried: string[] = []
+  for (const job of failedJobs) {
+    try {
+      await retryJob(job.jobId, tenantId)
+      retried.push(job.jobId)
+    } catch (err) {
+      console.error(`[evaluation] retry failed for job ${job.jobId}:`, err)
+    }
+  }
+
+  return { requested: failedJobs.length, retried: retried.length, jobIds: retried }
+}
 
 export async function retryJob(jobId: string, tenantId: string) {
   const [job] = await db

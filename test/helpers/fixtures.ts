@@ -21,7 +21,7 @@ import type { ExamStatus } from '@modules/exam/exam.types.js'
 // Lifecycle states in which an exam has become student-visible at least once,
 // so `publishedAt` should be stamped (mirrors transitionExam's → live rule).
 const PUBLISHED_STATES = new Set<ExamStatus>([
-  'live', 'under_evaluation', 'results_published', 'completed', 'archived',
+  'live', 'under_evaluation', 'ready_to_publish', 'completed', 'archived',
 ])
 
 let _counter = 0
@@ -152,6 +152,10 @@ export async function createTestExam(overrides: {
   subjectId?: string
   scheduledAt?: Date | null
   endsAt?: Date | null
+  // When the paper entered the review pipeline. This is what the monthly mock
+  // quota counts (drafts are free), so tests that exercise plan limits set it
+  // explicitly. Defaults to "now" for any post-draft status.
+  submittedAt?: Date | null
 }) {
   const status = overrides.status ?? 'live'
   const [e] = await db
@@ -170,6 +174,10 @@ export async function createTestExam(overrides: {
       scheduledAt: overrides.scheduledAt ?? null,
       endsAt: overrides.endsAt ?? null,
       publishedAt: PUBLISHED_STATES.has(status) ? new Date() : null,
+      submittedAt:
+        overrides.submittedAt !== undefined
+          ? overrides.submittedAt
+          : status === 'draft' ? null : new Date(),
     })
     .returning()
   return e

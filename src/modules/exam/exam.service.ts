@@ -1,14 +1,15 @@
-import { eq, and, inArray, sql, desc, asc } from 'drizzle-orm'
+import { eq, ne, and, inArray, sql, desc, asc } from 'drizzle-orm'
 import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
 import {
   exams, questions, examChapters, examClasses, examStatusHistory,
 } from './exam.schema.js'
-import type { ExamStatus } from './exam.types.js'
+import { WIZARD_STEPS, STUDENT_VISIBLE_STATUSES } from './exam.types.js'
+import type { ExamStatus, WizardState } from './exam.types.js'
 import { examPurchases } from '../payment/payment.schema.js'
 import { examSessions } from '../exam-session/exam-session.schema.js'
 import { reports } from '../report/report.schema.js'
-import { classMembers } from '../class/class.schema.js'
+import { classes, classMembers } from '../class/class.schema.js'
 import { assertWithinLimit, assertHasFeature } from '../billing/billing.service.js'
 import { validateQuestionPayload } from './exam.validators.js'
 import { memberships } from '../membership/membership.schema.js'
@@ -16,7 +17,19 @@ import { dispatch } from '@modules/notification/index.js'
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
-export async function assertExamEditor(
+/**
+ * Load an exam the caller is allowed to AUTHOR.
+ *
+ * Authoring is a **teacher** capability. The coaching owner (the PRD "Admin")
+ * reviews, approves, schedules and runs papers — they never write them. This is
+ * the hard role split: an owner who also wants to teach needs a teacher account,
+ * because "owner = teacher with extra buttons" is exactly the confusion this
+ * separation exists to remove.
+ *
+ * Within the teacher role, authorship is per-person: a teacher may only touch
+ * papers they created, never a colleague's.
+ */
+export async function assertExamAuthor(
   examId: string,
   tenantId: string,
   requesterId: string,
@@ -28,9 +41,59 @@ export async function assertExamEditor(
     .where(and(eq(exams.id, examId), eq(exams.tenantId, tenantId)))
     .limit(1)
   if (!exam) throw Errors.NOT_FOUND('Exam')
-  if (requesterRole !== 'coaching_owner' && exam.createdBy !== requesterId)
+  if (requesterRole !== 'teacher')
+    throw new AppError(
+      'FORBIDDEN',
+      'Only a teacher can author exams. Coaching owners review and schedule them.',
+      403,
+    )
+  if (exam.createdBy !== requesterId)
     throw new AppError('FORBIDDEN', 'You can only manage exams you created', 403)
   return exam
+}
+
+/**
+ * Load an exam the caller is allowed to READ in the staff UI.
+ *
+ * Teachers see only their own papers. The owner sees every paper in the coaching
+ * **except drafts** — an unsubmitted draft is the teacher's private workspace and
+ * must never surface in an admin view. A hidden exam answers 404 rather than 403
+ * so the owner cannot probe for the existence of a colleague's unfinished paper.
+ */
+export async function loadVisibleExam(
+  examId: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+) {
+  const [exam] = await db
+    .select()
+    .from(exams)
+    .where(and(eq(exams.id, examId), eq(exams.tenantId, tenantId)))
+    .limit(1)
+  if (!exam) throw Errors.NOT_FOUND('Exam')
+
+  if (requesterRole === 'coaching_owner') {
+    if (exam.status === 'draft') throw Errors.NOT_FOUND('Exam')
+    return exam
+  }
+  if (exam.createdBy !== requesterId) throw Errors.NOT_FOUND('Exam')
+  return exam
+}
+
+/**
+ * Resolve class ids to rows, asserting every one belongs to the tenant. Used by
+ * every path that links an exam to a class (wizard generation, manual linking)
+ * so a caller can never attach an exam to another tenant's class by id.
+ */
+export async function resolveTenantClasses(classIds: string[], tenantId: string) {
+  if (classIds.length === 0) return []
+  const rows = await db
+    .select({ id: classes.id, name: classes.name, grade: classes.grade })
+    .from(classes)
+    .where(and(inArray(classes.id, classIds), eq(classes.tenantId, tenantId)))
+  if (rows.length !== new Set(classIds).size) throw Errors.NOT_FOUND('Class')
+  return rows
 }
 
 // ── Exam state machine ───────────────────────────────────────────────────────
@@ -41,11 +104,15 @@ export async function assertExamEditor(
 // `db.update(exams).set({ status })` is disallowed outside this section.
 //
 // Actor kinds:
-//   'author' — the exam creator, or any coaching_owner.
+//   'author' — the teacher who created the exam. NOT the coaching owner: under
+//              the hard role split the owner never authors or submits a paper.
 //   'owner'  — a coaching_owner only (the PRD "Admin").
 //   'system' — the time-triggered worker (no user), or a coaching_owner override.
+//   'author_or_owner' — the authoring teacher in the normal flow, with the owner
+//              permitted as an audited break-glass. Used only for publishing
+//              results; see the note on that transition below.
 
-type TransitionActorKind = 'author' | 'owner' | 'system'
+type TransitionActorKind = 'author' | 'owner' | 'system' | 'author_or_owner'
 export type TransitionActor = { id: string; role: string } | null
 
 // Allowed transitions, keyed `${from}->${to}`. Anything absent is rejected.
@@ -57,17 +124,33 @@ const EXAM_TRANSITIONS: Record<string, TransitionActorKind> = {
   'under_review->approved': 'owner',
   'under_review->changes_requested': 'owner',
   'under_review->rejected': 'owner',
-  // Teacher reopens a rejected exam to rework it
-  'rejected->draft': 'author',
+  // NOTE: `rejected` is deliberately TERMINAL — there is no rejected→draft hop.
+  // The admin has two distinct verdicts: `changes_requested` means "fix these
+  // points and resubmit" (teacher regains edit rights and may re-enter review),
+  // while `rejected` means the paper itself is not usable. A teacher who wants
+  // to salvage a rejected exam duplicates it into a fresh draft instead.
   // Approve & Schedule: owner sets batch/date/time, then schedules
   'approved->scheduled': 'owner',
   // Time-triggered lifecycle (worker); a coaching_owner may override
   'scheduled->live': 'system',
   'live->under_evaluation': 'system',
-  // Teacher publishes results (gates student visibility)
-  'under_evaluation->results_published': 'author',
+  // Evaluation finished for every session — the exam surfaces in the teacher's
+  // "Ready to Publish" bucket, where they review each student's report before
+  // releasing anything. Driven by the worker, not by a human click.
+  'under_evaluation->ready_to_publish': 'system',
+  // The teacher publishes, which both reveals results to students AND finishes
+  // the lifecycle — see the `completed` note in exam.types.ts.
+  //
+  // Normally author-only: the owner reviews and schedules papers, they do not
+  // publish them. The owner is nevertheless allowed here as a BREAK-GLASS,
+  // because 'author' means the one specific teacher who created the exam — if
+  // that person leaves the coaching, is deactivated, or is simply away, an
+  // author-only rule would strand the exam in `ready_to_publish` forever and
+  // students would never receive marks that are already computed. The override
+  // is recorded in `exam_status_history` with the owner's actorId, so "who
+  // published this" is always answerable.
+  'ready_to_publish->completed': 'author_or_owner',
   // Wrap up
-  'results_published->completed': 'system',
   'completed->archived': 'owner',
 }
 
@@ -79,7 +162,13 @@ function assertTransitionAllowed(
   switch (kind) {
     case 'author':
       if (!actor) throw Errors.FORBIDDEN()
-      if (actor.role !== 'coaching_owner' && exam.createdBy !== actor.id)
+      if (actor.role !== 'teacher')
+        throw new AppError(
+          'FORBIDDEN',
+          'Only the authoring teacher can perform this action',
+          403,
+        )
+      if (exam.createdBy !== actor.id)
         throw new AppError('FORBIDDEN', 'You can only manage exams you created', 403)
       return
     case 'owner':
@@ -90,6 +179,19 @@ function assertTransitionAllowed(
       // Worker calls pass a null actor; a human override must be the owner.
       if (actor && actor.role !== 'coaching_owner')
         throw new AppError('FORBIDDEN', 'Only the coaching owner can override this transition', 403)
+      return
+    case 'author_or_owner':
+      // Null actor = the worker (public-exam auto-publish); allowed.
+      if (!actor) return
+      if (actor.role === 'coaching_owner') return
+      if (actor.role !== 'teacher')
+        throw new AppError(
+          'FORBIDDEN',
+          'Only the authoring teacher or the coaching owner can perform this action',
+          403,
+        )
+      if (exam.createdBy !== actor.id)
+        throw new AppError('FORBIDDEN', 'You can only manage exams you created', 403)
       return
   }
 }
@@ -126,7 +228,7 @@ async function notifyTransition(exam: typeof exams.$inferSelect, to: ExamStatus,
             data: {
               title: 'Exam submitted for review',
               body: `"${exam.title}" was submitted and is awaiting your review.`,
-              link: `/exams/${exam.id}`,
+              link: `/coaching/exams/${exam.id}`,
               metadata: { examId: exam.id },
             },
           })
@@ -140,7 +242,7 @@ async function notifyTransition(exam: typeof exams.$inferSelect, to: ExamStatus,
           data: {
             title: 'Changes requested on your exam',
             body: `Changes were requested on "${exam.title}".${remarks ? ` Remarks: ${remarks}` : ''}`,
-            link: `/exams/${exam.id}`,
+            link: `/coaching/exams/${exam.id}`,
             metadata: { examId: exam.id, remarks: remarks ?? null },
           },
         })
@@ -153,8 +255,24 @@ async function notifyTransition(exam: typeof exams.$inferSelect, to: ExamStatus,
           data: {
             title: 'Your exam was rejected',
             body: `"${exam.title}" was rejected.${remarks ? ` Remarks: ${remarks}` : ''}`,
-            link: `/exams/${exam.id}`,
+            link: `/coaching/exams/${exam.id}`,
             metadata: { examId: exam.id, remarks: remarks ?? null },
+          },
+        })
+        break
+      // Approval and scheduling are separate admin decisions and can be days
+      // apart, so each gets its own notification. Approval is the one the
+      // teacher is waiting on; scheduling tells them when it will actually run.
+      case 'approved':
+        await dispatch({
+          type: 'exam_approved',
+          recipients: { userIds: [exam.createdBy] },
+          tenantId: exam.tenantId,
+          data: {
+            title: 'Your exam was approved',
+            body: `"${exam.title}" has been approved. It will run once your admin schedules it.`,
+            link: `/coaching/exams/${exam.id}`,
+            metadata: { examId: exam.id },
           },
         })
         break
@@ -164,9 +282,9 @@ async function notifyTransition(exam: typeof exams.$inferSelect, to: ExamStatus,
           recipients: { userIds: [exam.createdBy] },
           tenantId: exam.tenantId,
           data: {
-            title: 'Your exam was approved & scheduled',
-            body: `"${exam.title}" has been approved${exam.scheduledAt ? ` and is scheduled for ${exam.scheduledAt.toISOString()}` : ''}.`,
-            link: `/exams/${exam.id}`,
+            title: 'Your exam was scheduled',
+            body: `"${exam.title}" is scheduled${exam.scheduledAt ? ` for ${exam.scheduledAt.toISOString()}` : ''}.`,
+            link: `/coaching/exams/${exam.id}`,
             metadata: { examId: exam.id },
           },
         })
@@ -181,13 +299,16 @@ async function notifyTransition(exam: typeof exams.$inferSelect, to: ExamStatus,
             data: {
               title: 'New exam available',
               body: `"${exam.title}" is now live. Start your attempt before it ends.`,
-              link: `/exams/${exam.id}`,
+              // Students land on the instruction sheet, never straight in.
+              link: `/student/exams/${exam.id}/intro`,
               metadata: { examId: exam.id },
             },
           })
         break
       }
-      case 'results_published': {
+      // `completed` IS the publish event (see exam.types.ts). The notification is
+      // named for what it means to the student receiving it, not for the status.
+      case 'completed': {
         const classIds = await getExamClassIds(exam.id)
         for (const classId of classIds)
           await dispatch({
@@ -197,12 +318,28 @@ async function notifyTransition(exam: typeof exams.$inferSelect, to: ExamStatus,
             data: {
               title: 'Results published',
               body: `Results for "${exam.title}" are now available.`,
-              link: `/exams/${exam.id}`,
+              // No session id here (this fires per class, not per attempt), so
+              // the honest destination is the student's own results list.
+              link: `/student/results`,
               metadata: { examId: exam.id },
             },
           })
         break
       }
+      // Evaluation finished — tell the teacher their review queue has an item.
+      case 'ready_to_publish':
+        await dispatch({
+          type: 'exam_ready_to_publish',
+          recipients: { userIds: [exam.createdBy] },
+          tenantId: exam.tenantId,
+          data: {
+            title: 'Exam ready to publish',
+            body: `All sessions for "${exam.title}" have been evaluated. Review the reports and publish results.`,
+            link: `/coaching/exams/${exam.id}`,
+            metadata: { examId: exam.id },
+          },
+        })
+        break
     }
   } catch (err) {
     console.error(`[exam] transition notification failed (${to}) for ${exam.id}:`, err)
@@ -215,7 +352,8 @@ async function notifyTransition(exam: typeof exams.$inferSelect, to: ExamStatus,
  * Also stamps the relevant lifecycle timestamp columns as a side effect.
  *
  * `actor` is null for system/worker-driven transitions (scheduled→live,
- * live→under_evaluation, results_published→completed).
+ * live→under_evaluation, under_evaluation→ready_to_publish, and the public-exam
+ * ready_to_publish→completed auto-publish).
  */
 export async function transitionExam(params: {
   examId: string
@@ -262,10 +400,10 @@ export async function transitionExam(params: {
       // publishedAt semantics so marketplace ordering keeps working.
       if (!exam.publishedAt) patch.publishedAt = now
       break
-    case 'results_published':
-      patch.resultsPublishedAt = now
-      break
     case 'completed':
+      // Publishing and completing are the same moment now, so stamp both.
+      // `resultsPublishedAt` is kept because report/marketplace reads key off it.
+      patch.resultsPublishedAt = now
       patch.completedAt = now
       break
   }
@@ -295,18 +433,18 @@ const EDITABLE_STATUSES: ReadonlySet<ExamStatus> = new Set(['draft', 'changes_re
 // Statuses in which a private exam's results are visible to students. Public
 // exams are self-paced and show results as soon as they are evaluated (see
 // assertResultsVisible in the read paths).
+//
+// `ready_to_publish` is deliberately NOT here. That state means "evaluated and
+// waiting on the teacher's review" — the scores exist but nobody outside the
+// coaching may see them yet. Adding it would leak marks before the teacher has
+// looked at them, which is the entire point of the review step.
 export const RESULTS_VISIBLE_STATUSES: ReadonlySet<ExamStatus> = new Set([
-  'results_published', 'completed',
+  'completed',
 ])
 
-// Lifecycle statuses a student may see at all: an upcoming scheduled exam
-// (metadata only — questions stay hidden until it goes live), the live exam
-// itself, and every post-live state (so attempted exams remain reachable for
-// "results pending" / "result ready"). Attempting is still live-only —
-// startSession asserts `live` + the schedule window separately.
-export const STUDENT_VISIBLE_STATUSES: ReadonlySet<ExamStatus> = new Set([
-  'scheduled', 'live', 'under_evaluation', 'results_published', 'completed',
-])
+// Defined in exam.types so class.service can share it; re-exported here because
+// callers have always imported it from this module.
+export { STUDENT_VISIBLE_STATUSES }
 
 function assertExamEditable(exam: { status: string }) {
   if (!EDITABLE_STATUSES.has(exam.status as ExamStatus))
@@ -318,8 +456,8 @@ function assertExamEditable(exam: { status: string }) {
 /**
  * Guard for student-facing results / report / evaluation reads. Private
  * (coaching) exams hide scores until the teacher publishes results — status
- * must be `results_published` or `completed`. Public marketplace exams are
- * self-paced and show results as soon as they are evaluated, so they are exempt.
+ * must be `completed`. Public marketplace exams are self-paced and show results
+ * as soon as they are evaluated, so they are exempt.
  */
 export async function assertResultsVisible(examId: string) {
   const [exam] = await db
@@ -363,7 +501,9 @@ export async function createExam(data: {
   scheduledAt?: Date
   endsAt?: Date
 }) {
-  await assertWithinLimit(data.tenantId, 'mocks_per_month')
+  // No monthly-quota check here: creating a draft is free. The `mocks_per_month`
+  // limit is charged when the paper is submitted for review (see submitForReview),
+  // so abandoned drafts never cost the coaching anything.
   if (data.visibility !== 'private') await assertHasFeature(data.tenantId, 'public_mocks')
 
   const [exam] = await db
@@ -389,6 +529,148 @@ export async function createExam(data: {
   return exam
 }
 
+// ── Resumable authoring wizard ───────────────────────────────────────────────
+//
+// The teacher clicks "Generate a paper" and a draft exists from that instant —
+// before a single question has been picked. Every step of the wizard writes its
+// form state back to that row, so closing the tab, navigating away, or coming
+// back tomorrow all resume at the same place. Drafts are private to their author
+// (see `staffExamScope` / `loadVisibleExam`): the admin panel never shows them.
+
+/** Placeholder title for a draft the teacher has not named yet. */
+export const UNTITLED_DRAFT_TITLE = 'Untitled paper'
+
+/**
+ * Open a brand-new wizard draft. Deliberately takes no content: the paper is
+ * still empty and gets its title, subject, classes and questions as the teacher
+ * walks the steps. Teacher-only — the owner does not author.
+ */
+export async function startWizardDraft(params: {
+  tenantId: string
+  createdBy: string
+  requesterRole: string
+  title?: string
+}) {
+  if (params.requesterRole !== 'teacher')
+    throw new AppError(
+      'FORBIDDEN',
+      'Only a teacher can author exams. Coaching owners review and schedule them.',
+      403,
+    )
+
+  const [exam] = await db
+    .insert(exams)
+    .values({
+      tenantId: params.tenantId,
+      createdBy: params.createdBy,
+      title: params.title?.trim() || UNTITLED_DRAFT_TITLE,
+      // Placeholder until the generator computes an estimate from the picked
+      // questions; the teacher can override it on the review step.
+      durationMins: 60,
+      visibility: 'private',
+      status: 'draft',
+      wizardStep: 1,
+      wizardState: {},
+    })
+    .returning()
+
+  return exam
+}
+
+/**
+ * Autosave one step of the wizard. Called on every step change and on tab close,
+ * so it must be cheap and idempotent.
+ *
+ * `state` REPLACES the stored blob rather than merging: the client owns the
+ * whole form, and a merge would strip nothing when the teacher clears a
+ * selection (deselecting every chapter has to persist as "no chapters", not as
+ * "keep yesterday's chapters").
+ *
+ * Only allowed while the exam is still editable — once it is submitted for
+ * review the paper is frozen, and a stray autosave from a stale tab must not
+ * mutate it.
+ */
+export async function saveWizardState(
+  examId: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+  data: { step: number; state: WizardState; title?: string },
+) {
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
+  assertExamEditable(exam)
+
+  if (!Number.isInteger(data.step) || data.step < 1 || data.step > WIZARD_STEPS)
+    throw Errors.VALIDATION(`step must be an integer between 1 and ${WIZARD_STEPS}`)
+
+  const patch: Record<string, unknown> = {
+    wizardStep: data.step,
+    wizardState: data.state,
+    updatedAt: new Date(),
+  }
+  // The title lives on the exam itself (it is real exam metadata, not wizard
+  // scratch state), so the wizard's title field writes through to it.
+  const title = data.title?.trim()
+  if (title) patch.title = title
+
+  const [updated] = await db.update(exams).set(patch).where(eq(exams.id, examId)).returning()
+  return updated
+}
+
+/**
+ * The teacher's own drafts — the "resume where you left off" list on the test
+ * engine landing page. Newest activity first, so the paper they were last
+ * working on is at the top.
+ */
+export async function listMyDrafts(tenantId: string, requesterId: string) {
+  // `questionCount` drives the "3 of 20 questions" progress line on the resume
+  // card, so it comes back with the list rather than costing a request per row.
+  return db
+    .select({
+      id: exams.id,
+      title: exams.title,
+      status: exams.status,
+      subjectId: exams.subjectId,
+      totalMarks: exams.totalMarks,
+      durationMins: exams.durationMins,
+      wizardStep: exams.wizardStep,
+      wizardState: exams.wizardState,
+      questionCount: sql<number>`count(${questions.id})::int`,
+      createdAt: exams.createdAt,
+      updatedAt: exams.updatedAt,
+    })
+    .from(exams)
+    .leftJoin(questions, eq(questions.examId, exams.id))
+    .where(
+      and(
+        eq(exams.tenantId, tenantId),
+        eq(exams.createdBy, requesterId),
+        eq(exams.status, 'draft'),
+      ),
+    )
+    .groupBy(exams.id)
+    .orderBy(desc(exams.updatedAt))
+}
+
+/**
+ * Abandon a draft. Only a draft may be deleted — anything that has entered the
+ * review pipeline is part of the coaching's record and is archived, not removed.
+ */
+export async function discardDraft(
+  examId: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+) {
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
+  if (exam.status !== 'draft')
+    throw Errors.VALIDATION(`Only a draft can be discarded (this exam is ${exam.status})`)
+
+  // Questions, class links and chapter links all cascade from the exam row.
+  await db.delete(exams).where(eq(exams.id, examId))
+  return { success: true }
+}
+
 export async function updateExam(
   id: string,
   tenantId: string,
@@ -409,7 +691,7 @@ export async function updateExam(
     endsAt?: Date | null
   },
 ) {
-  const exam = await assertExamEditor(id, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(id, tenantId, requesterId, requesterRole)
   assertExamEditable(exam)
 
   if (data.visibility && data.visibility !== 'private' && exam.visibility === 'private')
@@ -437,9 +719,15 @@ export async function submitForReview(
   requesterId: string,
   requesterRole: string,
 ) {
-  const exam = await assertExamEditor(id, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(id, tenantId, requesterId, requesterRole)
   if (exam.status !== 'draft' && exam.status !== 'changes_requested')
     throw Errors.VALIDATION(`Cannot submit an exam that is ${exam.status}`)
+
+  // The monthly mock quota is charged here rather than at draft creation, so a
+  // teacher can start and abandon as many drafts as they like. A re-submission
+  // after `changes_requested` is not a second mock — `submittedAt` is already
+  // stamped inside this month, so it is still counted once.
+  if (exam.status === 'draft') await assertWithinLimit(tenantId, 'mocks_per_month')
 
   const [{ count: qCount }] = await db
     .select({ count: sql<number>`count(*)` })
@@ -491,9 +779,17 @@ export async function archiveExam(
 }
 
 /**
- * Teacher publishes results (under_evaluation → results_published), making
- * scores/reports visible to students. The evaluation worker leaves a finished
- * exam in `under_evaluation`; this is the explicit teacher gate that reveals them.
+ * Publish results (`ready_to_publish → completed`), making scores/reports
+ * visible to students and finishing the lifecycle.
+ *
+ * The exam only reaches `ready_to_publish` once the worker has confirmed every
+ * session is evaluated, so by the time this is callable the teacher has already
+ * been able to review each student's report. That ordering is the whole point:
+ * publishing is a confirmation of reviewed numbers, not a trigger for grading.
+ *
+ * Normally the authoring teacher; a coaching owner is accepted as an audited
+ * break-glass (see the `ready_to_publish->completed` note in EXAM_TRANSITIONS).
+ * `transitionExam` enforces both and writes the actor to exam_status_history.
  */
 export async function publishResults(
   id: string,
@@ -501,15 +797,26 @@ export async function publishResults(
   requesterId: string,
   requesterRole: string,
 ) {
-  const exam = await assertExamEditor(id, tenantId, requesterId, requesterRole)
-  if (exam.status !== 'under_evaluation')
+  const [exam] = await db
+    .select({ id: exams.id, status: exams.status })
+    .from(exams)
+    .where(and(eq(exams.id, id), eq(exams.tenantId, tenantId)))
+    .limit(1)
+  if (!exam) throw Errors.NOT_FOUND('Exam')
+
+  if (exam.status === 'under_evaluation')
     throw Errors.VALIDATION(
-      `Results can only be published from under_evaluation (currently ${exam.status})`,
+      'This exam is still being evaluated. Results can be published once every session has been evaluated.',
     )
+  if (exam.status !== 'ready_to_publish')
+    throw Errors.VALIDATION(
+      `Results can only be published from ready_to_publish (currently ${exam.status})`,
+    )
+
   return transitionExam({
     examId: id,
     tenantId,
-    to: 'results_published',
+    to: 'completed',
     actor: { id: requesterId, role: requesterRole },
   })
 }
@@ -525,7 +832,7 @@ export async function duplicateExam(
   requesterId: string,
   requesterRole: string,
 ) {
-  const source = await assertExamEditor(id, tenantId, requesterId, requesterRole)
+  const source = await assertExamAuthor(id, tenantId, requesterId, requesterRole)
 
   return db.transaction(async (tx) => {
     const [copy] = await tx
@@ -600,7 +907,7 @@ export async function setExamChapters(
   requesterRole: string,
   chapterIds: string[],
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertExamEditable(exam)
 
   await db.transaction(async (tx) => {
@@ -620,8 +927,9 @@ export async function linkExamToClass(
   requesterRole: string,
   classId: string,
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertExamEditable(exam)
+  await resolveTenantClasses([classId], tenantId)
 
   const [existing] = await db
     .select({ id: examClasses.id })
@@ -646,21 +954,21 @@ export async function unlinkExamFromClass(
   requesterRole: string,
   classId: string,
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertExamEditable(exam)
   await db.delete(examClasses).where(and(eq(examClasses.examId, examId), eq(examClasses.classId, classId)))
   return { success: true }
 }
 
-export async function listExamClasses(examId: string, tenantId: string) {
-  // just verify exam belongs to tenant
-  const [exam] = await db
-    .select({ id: exams.id })
-    .from(exams)
-    .where(and(eq(exams.id, examId), eq(exams.tenantId, tenantId)))
-    .limit(1)
-  if (!exam) throw Errors.NOT_FOUND('Exam')
-
+export async function listExamClasses(
+  examId: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+) {
+  // Same visibility rule as the detail view — the owner must not be able to read
+  // a draft's class assignment either.
+  await loadVisibleExam(examId, tenantId, requesterId, requesterRole)
   return db.select().from(examClasses).where(eq(examClasses.examId, examId))
 }
 
@@ -682,7 +990,7 @@ export async function addQuestion(
     explanation?: string
   },
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertExamEditable(exam)
 
   const validated = validateQuestionPayload(data.type, data.payload, data.answerKey)
@@ -734,7 +1042,7 @@ export async function updateQuestion(
     explanation?: string | null
   },
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertExamEditable(exam)
 
   const [q] = await db
@@ -783,7 +1091,7 @@ export async function removeQuestion(
   requesterId: string,
   requesterRole: string,
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertExamEditable(exam)
 
   const [q] = await db
@@ -808,7 +1116,7 @@ export async function reorderQuestions(
   requesterRole: string,
   orderedIds: string[],
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertExamEditable(exam)
 
   const existing = await db
@@ -831,19 +1139,32 @@ export async function reorderQuestions(
 
 // ── Listing ─────────────────────────────────────────────────────────────────
 
+/**
+ * The row scope a staff member may list.
+ *
+ * Teacher → only the papers they created, in every lifecycle state.
+ * Owner   → every paper in the coaching **except drafts**. A draft is the
+ *           authoring teacher's private workspace: it is invisible in the admin
+ *           panel until they submit it for review. The owner's involvement in an
+ *           exam begins at `under_review`.
+ */
+function staffExamScope(tenantId: string, requesterId: string, requesterRole: string) {
+  if (requesterRole === 'coaching_owner')
+    return and(eq(exams.tenantId, tenantId), ne(exams.status, 'draft'))
+  return and(eq(exams.tenantId, tenantId), eq(exams.createdBy, requesterId))
+}
+
 export async function listExamsForTenant(
   tenantId: string,
   requesterId: string,
   requesterRole: string,
   statuses?: ExamStatus[],
 ) {
-  const scope =
-    requesterRole === 'coaching_owner'
-      ? eq(exams.tenantId, tenantId)
-      : and(eq(exams.tenantId, tenantId), eq(exams.createdBy, requesterId))
+  const scope = staffExamScope(tenantId, requesterId, requesterRole)
 
   // Optional lifecycle filter powers the teacher/admin dashboard buckets
-  // (e.g. Approval Queue = under_review, Live, Evaluation, …).
+  // (e.g. Approval Queue = under_review, Live, Evaluation, …). An owner asking
+  // for `?status=draft` still gets nothing — the scope above wins.
   const where =
     statuses && statuses.length > 0
       ? and(scope, inArray(exams.status, statuses))
@@ -853,18 +1174,17 @@ export async function listExamsForTenant(
 }
 
 /**
- * Aggregate KPIs for the exams hub. Owners see stats across the whole tenant;
- * teachers see stats scoped to exams they created (matching listExamsForTenant).
+ * Aggregate KPIs for the exams hub. Owners see stats across the whole coaching
+ * minus drafts; teachers see stats scoped to exams they created. Same scope as
+ * `listExamsForTenant`, so the tiles always agree with the list beneath them —
+ * in particular an owner's `byStatus.draft` is always 0.
  */
 export async function getExamStatsForTenant(
   tenantId: string,
   requesterId: string,
   requesterRole: string,
 ) {
-  const scope =
-    requesterRole === 'coaching_owner'
-      ? eq(exams.tenantId, tenantId)
-      : and(eq(exams.tenantId, tenantId), eq(exams.createdBy, requesterId))
+  const scope = staffExamScope(tenantId, requesterId, requesterRole)
 
   const [counts] = await db
     .select({
@@ -878,7 +1198,7 @@ export async function getExamStatsForTenant(
       scheduled: sql<number>`count(*) filter (where ${exams.status} = 'scheduled')::int`,
       live: sql<number>`count(*) filter (where ${exams.status} = 'live')::int`,
       underEvaluation: sql<number>`count(*) filter (where ${exams.status} = 'under_evaluation')::int`,
-      resultsPublished: sql<number>`count(*) filter (where ${exams.status} = 'results_published')::int`,
+      readyToPublish: sql<number>`count(*) filter (where ${exams.status} = 'ready_to_publish')::int`,
       completed: sql<number>`count(*) filter (where ${exams.status} = 'completed')::int`,
       archived: sql<number>`count(*) filter (where ${exams.status} = 'archived')::int`,
       publicExams: sql<number>`count(*) filter (where ${exams.visibility} in ('public_free', 'public_paid'))::int`,
@@ -916,7 +1236,7 @@ export async function getExamStatsForTenant(
       scheduled: counts.scheduled,
       live: counts.live,
       under_evaluation: counts.underEvaluation,
-      results_published: counts.resultsPublished,
+      ready_to_publish: counts.readyToPublish,
       completed: counts.completed,
       archived: counts.archived,
     },
@@ -925,6 +1245,7 @@ export async function getExamStatsForTenant(
     live: counts.live,
     scheduled: counts.scheduled,
     underEvaluation: counts.underEvaluation,
+    readyToPublish: counts.readyToPublish,
     publicExams: counts.publicExams,
     totalMarks: counts.totalMarks,
     totalAttempts: attempts.totalAttempts,
@@ -1002,7 +1323,33 @@ export async function listAvailableExamsForStudent(studentId: string, tenantId: 
     else byExam.set(s.examId, [s])
   }
 
-  return rows.map((r) => ({ ...r, mySessions: byExam.get(r.id) ?? [] }))
+  // Which of the student's batches each exam was assigned to. `selectDistinct`
+  // above collapses the join, so the linkage has to be re-attached here — it's
+  // what lets a single batch's screen filter this list without its own endpoint.
+  const links = await db
+    .select({ examId: examClasses.examId, classId: examClasses.classId })
+    .from(examClasses)
+    .innerJoin(classMembers, eq(classMembers.classId, examClasses.classId))
+    .where(
+      and(
+        inArray(examClasses.examId, rows.map((r) => r.id)),
+        eq(classMembers.studentId, studentId),
+        eq(classMembers.status, 'approved'),
+      ),
+    )
+
+  const classesByExam = new Map<string, string[]>()
+  for (const l of links) {
+    const list = classesByExam.get(l.examId)
+    if (list) list.push(l.classId)
+    else classesByExam.set(l.examId, [l.classId])
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    mySessions: byExam.get(r.id) ?? [],
+    classIds: classesByExam.get(r.id) ?? [],
+  }))
 }
 
 export async function listPublicExams(filters?: { gradeLevel?: string; subjectId?: string }) {
@@ -1020,13 +1367,17 @@ export async function listPublicExams(filters?: { gradeLevel?: string; subjectId
     .orderBy(desc(exams.publishedAt))
 }
 
-export async function getExamFull(id: string, tenantId: string) {
-  const [exam] = await db
-    .select()
-    .from(exams)
-    .where(and(eq(exams.id, id), eq(exams.tenantId, tenantId)))
-    .limit(1)
-  if (!exam) throw Errors.NOT_FOUND('Exam')
+/**
+ * Full staff view of one exam. Scoped by `loadVisibleExam`, so a teacher can
+ * only open their own papers and the owner gets a 404 on anyone's draft.
+ */
+export async function getExamFull(
+  id: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+) {
+  const exam = await loadVisibleExam(id, tenantId, requesterId, requesterRole)
 
   const qs = await db
     .select()
@@ -1056,6 +1407,32 @@ function localizeQuestions<T extends { body: string; languageVariants?: Record<s
   })
 }
 
+/**
+ * The front-page facts of a paper — how many questions of each type, for how
+ * many marks — with no question content whatsoever.
+ *
+ * Exists so a candidate waiting for a `scheduled` exam (or deciding whether to
+ * buy a paid mock) can be shown the paper's structure without any of it being
+ * readable ahead of time. Everything here is printed on the cover of a physical
+ * question paper, so none of it is secret; bodies, payloads and answer keys
+ * never leave this function.
+ */
+export async function getExamStructure(
+  examId: string,
+): Promise<{ type: string; count: number; marks: number; negativeMarks: number }[]> {
+  return db
+    .select({
+      type: questions.type,
+      count: sql<number>`count(*)::int`,
+      marks: sql<number>`max(${questions.marks})::float8`,
+      negativeMarks: sql<number>`max(${questions.negativeMarks})::float8`,
+    })
+    .from(questions)
+    .where(eq(questions.examId, examId))
+    .groupBy(questions.type)
+    .orderBy(sql`min(${questions.order})`)
+}
+
 export async function getExamForStudent(id: string, studentId: string, lang?: string) {
   const [exam] = await db.select().from(exams).where(eq(exams.id, id)).limit(1)
   if (!exam) throw Errors.NOT_FOUND('Exam')
@@ -1065,8 +1442,11 @@ export async function getExamForStudent(id: string, studentId: string, lang?: st
   const hasAccess = await canStudentAccess(studentId, id)
   if (!hasAccess) throw new AppError('FORBIDDEN', 'You do not have access to this exam', 403)
 
-  // Upcoming exam: metadata only — questions stay hidden until it goes live.
-  if (exam.status === 'scheduled') return { ...exam, questions: [] }
+  // Upcoming exam: questions stay hidden until it goes live, but the candidate
+  // waiting on the instruction sheet still gets the paper's shape (counts and
+  // marks per type) so they can read the structure before the paper opens.
+  if (exam.status === 'scheduled')
+    return { ...exam, questions: [], structure: await getExamStructure(id) }
 
   const qs = await db
     .select({
@@ -1147,7 +1527,8 @@ export async function getPublicExamPreview(id: string) {
     .limit(1)
   if (!exam) throw Errors.NOT_FOUND('Exam')
   if (exam.status !== 'live') throw Errors.NOT_FOUND('Exam')
-  return exam
+  // Shape of the paper only — what a buyer is entitled to see before paying.
+  return { ...exam, structure: await getExamStructure(id) }
 }
 
 export async function getPublicExamForStudent(id: string, studentId: string, lang?: string) {

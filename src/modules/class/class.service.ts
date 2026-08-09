@@ -4,6 +4,8 @@ import { AppError, Errors } from '../../shared/errors.js'
 import { classes, classMembers, joinCodes, CLASS_CODE_CHARS } from './class.schema.js'
 import { memberships } from '../membership/membership.schema.js'
 import { users } from '../auth/auth.schema.js'
+import { exams, examClasses } from '../exam/exam.schema.js'
+import { STUDENT_VISIBLE_STATUSES } from '../exam/exam.types.js'
 import { assertWithinLimit } from '../billing/billing.service.js'
 import { dispatch } from '@modules/notification/index.js'
 
@@ -73,7 +75,7 @@ export async function reassignClassTeacher(
     data: {
       title: 'A batch was assigned to you',
       body: `You are now the teacher for "${updated.name}".`,
-      link: `/classes/${updated.id}`,
+      link: `/coaching/classes/${updated.id}`,
     },
   })
 
@@ -192,8 +194,17 @@ export async function getClassesForTeacher(teacherId: string, tenantId: string) 
   return attachEnrollmentCounts(rows)
 }
 
+/**
+ * Batches this student is in — approved *and* pending.
+ *
+ * Pending rows are included deliberately: a class with `autoApprove: false`
+ * leaves the student waiting on a teacher, and filtering those out made their
+ * "My classes" screen look identical to never having joined at all. The caller
+ * distinguishes the two with `enrollmentStatus`. Rejected rows stay hidden —
+ * the teacher's decision is not something to keep showing the student.
+ */
 export async function getClassesForStudent(studentId: string, tenantId: string) {
-  return db
+  const rows = await db
     .select({
       id: classes.id,
       tenantId: classes.tenantId,
@@ -204,17 +215,62 @@ export async function getClassesForStudent(studentId: string, tenantId: string) 
       autoApprove: classes.autoApprove,
       createdAt: classes.createdAt,
       updatedAt: classes.updatedAt,
+      // Student-only fields: their own row in the batch, plus who runs it.
+      enrollmentStatus: classMembers.status,
+      enrolledAt: classMembers.enrolledAt,
+      teacherName: users.name,
     })
     .from(classes)
     .innerJoin(classMembers, eq(classMembers.classId, classes.id))
+    .leftJoin(users, eq(users.id, classes.teacherId))
     .where(
       and(
         eq(classMembers.studentId, studentId),
         eq(classes.tenantId, tenantId),
-        eq(classMembers.status, 'approved'),
+        inArray(classMembers.status, ['approved', 'pending']),
       ),
     )
     .orderBy(classes.createdAt)
+
+  if (rows.length === 0) return rows.map((r) => ({ ...r, studentCount: 0, examCount: 0 }))
+
+  const ids = rows.map((r) => r.id)
+
+  // Classmates: approved only. A student shouldn't learn how many requests are
+  // sitting in the teacher's queue — that's the staff-side `pendingCount`.
+  const memberCounts = await db
+    .select({
+      classId: classMembers.classId,
+      studentCount: sql<number>`count(*) filter (where ${classMembers.status} = 'approved')`.mapWith(Number),
+    })
+    .from(classMembers)
+    .where(inArray(classMembers.classId, ids))
+    .groupBy(classMembers.classId)
+
+  // Exams the batch has been assigned, in the same lifecycle states the student
+  // can actually see on their exams screen — so this count matches that list.
+  const examCounts = await db
+    .select({
+      classId: examClasses.classId,
+      examCount: sql<number>`count(distinct ${examClasses.examId})`.mapWith(Number),
+    })
+    .from(examClasses)
+    .innerJoin(exams, eq(exams.id, examClasses.examId))
+    .where(
+      and(
+        inArray(examClasses.classId, ids),
+        inArray(exams.status, [...STUDENT_VISIBLE_STATUSES] as string[]),
+      ),
+    )
+    .groupBy(examClasses.classId)
+
+  const members = new Map(memberCounts.map((c) => [c.classId, c.studentCount]))
+  const examsByClass = new Map(examCounts.map((c) => [c.classId, c.examCount]))
+  return rows.map((r) => ({
+    ...r,
+    studentCount: members.get(r.id) ?? 0,
+    examCount: examsByClass.get(r.id) ?? 0,
+  }))
 }
 
 // ── Class join codes ────────────────────────────────────────────────────────
@@ -416,15 +472,50 @@ export async function useClassJoinCode(userId: string, code: string) {
 
 // ── Enrollment management (teacher/owner) ───────────────────────────────────
 
-export async function listClassStudents(classId: string, tenantId: string, status?: string) {
+/**
+ * The batch roster.
+ *
+ * Staff get the full record — name, email, phone — because managing enrollments
+ * means contacting people. A **student** may also read the roster of a batch
+ * they're approved in (classmates are not a secret from each other), but under
+ * two restrictions enforced here rather than at the route:
+ *
+ *   - approved rows only — pending and rejected requests are between the
+ *     applicant and the teacher, not public to the batch;
+ *   - names only — contact details are staff-only, so a shared join code can
+ *     never turn into a scrape of every classmate's email and phone number.
+ */
+export async function listClassStudents(
+  classId: string,
+  tenantId: string,
+  status?: string,
+  viewer?: { role: string; id: string },
+) {
   const cls = await getClass(classId, tenantId)
   if (!cls) throw Errors.NOT_FOUND('Class')
 
-  const conditions = status
-    ? and(eq(classMembers.classId, classId), eq(classMembers.status, status))
+  const asStudent = viewer?.role === 'student'
+  if (asStudent) {
+    const [own] = await db
+      .select({ status: classMembers.status })
+      .from(classMembers)
+      .where(and(eq(classMembers.classId, classId), eq(classMembers.studentId, viewer!.id)))
+      .limit(1)
+    if (!own || own.status !== 'approved') {
+      throw new AppError(
+        'FORBIDDEN',
+        'You can only view the roster of a batch you are enrolled in',
+        403,
+      )
+    }
+  }
+
+  const effectiveStatus = asStudent ? 'approved' : status
+  const conditions = effectiveStatus
+    ? and(eq(classMembers.classId, classId), eq(classMembers.status, effectiveStatus))
     : eq(classMembers.classId, classId)
 
-  return db
+  const rows = await db
     .select({
       id: classMembers.id,
       studentId: classMembers.studentId,
@@ -438,6 +529,15 @@ export async function listClassStudents(classId: string, tenantId: string, statu
     .innerJoin(users, eq(users.id, classMembers.studentId))
     .where(conditions)
     .orderBy(classMembers.enrolledAt)
+
+  if (!asStudent) return rows
+  return rows.map((r) => ({
+    id: r.id,
+    studentId: r.studentId,
+    status: r.status,
+    enrolledAt: r.enrolledAt,
+    name: r.name,
+  }))
 }
 
 export async function updateEnrollmentStatus(

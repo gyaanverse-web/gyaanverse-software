@@ -39,3 +39,20 @@ export interface ReportSummary {
   publishedAt: Date | null
   createdAt: Date
 }
+
+/**
+ * Teacher-facing row. A reviewer is looking at a class, not at their own single
+ * report, so the student has to be nameable — `studentId` alone is unusable in
+ * a marks list. Students never get these fields; their own list is `ReportSummary`.
+ */
+export interface TeacherReportSummary extends ReportSummary {
+  studentName: string
+  studentEmail: string | null
+}
+
+/** Single report plus its per-question items, for the teacher's review drill-down. */
+export interface ReportDetail extends Report {
+  studentName: string
+  studentEmail: string | null
+  items: ReportItem[]
+}

@@ -4,9 +4,11 @@ export type NotificationType =
   | 'result_ready'
   // Approval-lifecycle (PRD v1)
   | 'exam_submitted'          // → admin/owner: teacher submitted for review
-  | 'exam_scheduled'          // → teacher: approved & scheduled
+  | 'exam_approved'           // → teacher: approved, scheduling still to come
+  | 'exam_scheduled'          // → teacher: run window set
   | 'exam_changes_requested'  // → teacher: bounced back with remarks
   | 'exam_rejected'           // → teacher: rejected with remarks
+  | 'exam_ready_to_publish'   // → teacher: every session evaluated, review & publish
   | 'results_published'       // → students: teacher published results
   | 'class_update'
   | 'invite_received'
@@ -94,9 +96,11 @@ export const NOTIFICATION_CONFIG: Record<NotificationType, NotificationConfig> =
   exam_starting_soon: { priority: 'urgent', email: false, sms: true  },
   result_ready:       { priority: 'high',   email: true,  sms: false },
   exam_submitted:         { priority: 'high',   email: true,  sms: false },
+  exam_approved:          { priority: 'high',   email: true,  sms: false },
   exam_scheduled:         { priority: 'high',   email: true,  sms: false },
   exam_changes_requested: { priority: 'high',   email: true,  sms: false },
   exam_rejected:          { priority: 'high',   email: true,  sms: false },
+  exam_ready_to_publish:  { priority: 'high',   email: true,  sms: false },
   results_published:      { priority: 'high',   email: true,  sms: false },
   class_update:       { priority: 'normal', email: false, sms: false },
   // email:false — invite.service sends its own dedicated invite email (the one

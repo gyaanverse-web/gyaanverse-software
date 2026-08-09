@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "signup_intent" varchar(20) DEFAULT 'student' NOT NULL;

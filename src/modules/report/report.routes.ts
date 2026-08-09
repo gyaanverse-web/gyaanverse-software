@@ -61,7 +61,7 @@ export async function reportRoutes(app: FastifyInstance) {
     schema: {
       tags: ['Reports'],
       summary: 'Get a student report (teacher view)',
-      description: 'Returns the full performance report for any student in the resolved tenant.',
+      description: 'Returns the full performance report — student identity, totals and per-question items — for any student in the resolved tenant. An item with non-null `feedback` was graded by the AI.',
       security: AUTH,
       params: {
         type: 'object',
@@ -83,7 +83,7 @@ export async function reportRoutes(app: FastifyInstance) {
     schema: {
       tags: ['Reports'],
       summary: 'List reports for an exam',
-      description: 'Returns all student reports for the given exam. Teachers only see reports for exams they created; owners see all.',
+      description: 'Returns all student reports for the given exam, each with the student\'s name and email, ordered by student name. Teachers only see reports for exams they created; owners see all.',
       security: AUTH,
       params: {
         type: 'object',

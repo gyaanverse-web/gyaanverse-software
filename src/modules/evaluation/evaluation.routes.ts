@@ -5,9 +5,11 @@ import { authenticate, requireTenantRole } from '@middleware/auth.middleware.js'
 import { tenantMiddleware } from '@middleware/tenant.middleware.js'
 import { assertHasFeature } from '@modules/billing/billing.service.js'
 import {
+  getExamEvaluationProgress,
   getJobForTenant,
   getSessionEvaluation,
   indexSyllabus,
+  retryFailedEvaluationsForExam,
   retryJob,
 } from './evaluation.service.js'
 
@@ -73,6 +75,51 @@ export async function evaluationRoutes(app: FastifyInstance) {
     const { jobId } = req.params as { jobId: string }
     const tenant = req.tenant!
     return retryJob(jobId, tenant.id)
+  })
+
+  // ── Teacher / owner: per-exam evaluation progress ────────────────────────
+  //
+  // Backs the "Under Evaluation" panel. An exam cannot reach Ready to Publish
+  // while any session is unsettled, so this is how a teacher finds out that one
+  // failed session is holding up the whole exam.
+
+  app.get('/tenant/exams/:examId/evaluation-progress', {
+    schema: {
+      tags: ['Evaluation'],
+      summary: 'Evaluation progress for an exam',
+      description:
+        'Session counts by evaluation state plus any failed jobs. `pending` is exactly what blocks the exam from moving to `ready_to_publish`.',
+      security: AUTH,
+      params: {
+        type: 'object',
+        required: ['examId'],
+        properties: { examId: { type: 'string', format: 'uuid' } },
+      },
+    },
+    preHandler: tenantAuth,
+  }, async (req) => {
+    const { examId } = req.params as { examId: string }
+    const tenant = req.tenant!
+    return getExamEvaluationProgress(examId, tenant.id)
+  })
+
+  app.post('/tenant/exams/:examId/evaluation-progress/retry', {
+    schema: {
+      tags: ['Evaluation'],
+      summary: 'Retry all failed evaluations for an exam',
+      description: 'Re-enqueues every failed evaluation job for the exam so it can reach `ready_to_publish`.',
+      security: AUTH,
+      params: {
+        type: 'object',
+        required: ['examId'],
+        properties: { examId: { type: 'string', format: 'uuid' } },
+      },
+    },
+    preHandler: tenantAuth,
+  }, async (req) => {
+    const { examId } = req.params as { examId: string }
+    const tenant = req.tenant!
+    return retryFailedEvaluationsForExam(examId, tenant.id)
   })
 
   // ── Teacher / owner: index syllabus into Qdrant via the engine ──────────

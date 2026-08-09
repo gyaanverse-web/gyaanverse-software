@@ -1,3 +1,7 @@
+// Platform-wide audit trail. Cross-cutting infrastructure rather than any one
+// module's concern, so it sits in `shared/`. NOTE: the table exists (migration
+// 0000) but nothing writes to it yet — exam lifecycle changes are audited
+// separately via `exam_status_history`.
 import { pgTable, uuid, varchar, jsonb, timestamp, index } from 'drizzle-orm/pg-core'
 
 export const auditLogs = pgTable('audit_logs', {

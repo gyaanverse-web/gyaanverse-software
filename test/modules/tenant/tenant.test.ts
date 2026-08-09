@@ -217,6 +217,15 @@ describe('getMyTenant', () => {
   it('returns the tenant for a member', async () => {
     const { tenant, student } = await seedTenantWithUsers()
     const result = await getMyTenant(student.id)
-    expect(result?.id).toBe(tenant.id)
+    expect(result?.tenant.id).toBe(tenant.id)
+  })
+
+  // Clients gate tenant-scoped UI on this value rather than the global session
+  // role, so it has to reflect the caller's membership in *this* coaching.
+  it('CRITICAL: reports the caller\'s role within the coaching', async () => {
+    const { owner, teacher, student } = await seedTenantWithUsers()
+    expect((await getMyTenant(owner.id))?.membershipRole).toBe('coaching_owner')
+    expect((await getMyTenant(teacher.id))?.membershipRole).toBe('teacher')
+    expect((await getMyTenant(student.id))?.membershipRole).toBe('student')
   })
 })

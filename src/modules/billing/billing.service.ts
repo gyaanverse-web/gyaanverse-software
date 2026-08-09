@@ -41,13 +41,18 @@ async function countUsage(tenantId: string, limit: keyof PlanLimits): Promise<nu
       return value
     }
     case 'mocks_per_month': {
+      // Counted on SUBMISSION, not creation. A teacher's unsubmitted drafts are
+      // scratch work — the wizard now creates a draft row the moment they start,
+      // so counting `createdAt` would bill the coaching for every abandoned
+      // attempt. The quota is consumed when a paper enters the review pipeline
+      // (`submittedAt`, stamped by the draft→under_review transition).
       const now = new Date()
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
       const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1)
       const [{ value }] = await db
         .select({ value: count() })
         .from(exams)
-        .where(and(eq(exams.tenantId, tenantId), gte(exams.createdAt, monthStart), lt(exams.createdAt, monthEnd)))
+        .where(and(eq(exams.tenantId, tenantId), gte(exams.submittedAt, monthStart), lt(exams.submittedAt, monthEnd)))
       return value
     }
     case 'ai_evaluations': {

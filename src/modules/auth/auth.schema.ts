@@ -14,6 +14,16 @@ export const users = pgTable('users', {
   phoneNumberVerified: boolean('phone_number_verified').notNull().default(false),
   isProfileComplete: boolean('is_profile_complete').notNull().default(false),
   role: varchar('role', { length: 50 }).notNull().default('student'),
+  // What the user signed up TO DO, picked on the signup screen. Never a
+  // permission — `role` is the permission, and it only becomes 'coaching_owner'
+  // once a coaching actually exists (registerCoaching below). That circularity
+  // is why this column has to exist: it is the only thing that can answer
+  // "a verified user with no coaching just signed in — where do they belong?".
+  //
+  // It is also deliberately never rewritten. Deleting a coaching resets `role`
+  // to 'student', but the person is still someone who came here to run one, so
+  // they keep landing on create/join rather than in the student area.
+  signupIntent: varchar('signup_intent', { length: 20 }).notNull().default('student'),
   tenantId: uuid('tenant_id').references(() => tenants.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

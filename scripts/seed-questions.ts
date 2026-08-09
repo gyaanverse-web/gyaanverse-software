@@ -18,12 +18,18 @@ import type { QuestionType } from '../src/modules/exam/exam.types.js'
 // need to name their `chapter`. One file per grade-subject keeps the content
 // browsable and lets you import a single subject at a time.
 //
-//   npm run db:seed:questions               # import every data file
-//   npm run db:seed:questions -- 9          # only grade 9
-//   npm run db:seed:questions -- 9 Physics  # only grade 9 Physics
+//   npm run db:seed:questions                        # import every data file
+//   npm run db:seed:questions -- 9                   # only grade 9
+//   npm run db:seed:questions -- 9 Physics           # only grade 9 Physics
+//   npm run db:seed:questions -- --tenant niaz       # into a coaching you made
 //
 // Idempotent: a question whose `ref` already exists (stored in metadata.ref) is
 // skipped, so you can keep appending and re-run safely.
+//
+// The question bank is tenant-scoped, so questions imported into `dev` are
+// invisible from any other coaching — that is the isolation working, not a bug.
+// If you signed up through the UI you are in your OWN coaching, and the default
+// import lands somewhere you will never see. Pass --tenant <your-slug> for that.
 // ─────────────────────────────────────────────────────────────────────────────
 
 if (process.env.NODE_ENV === 'production') {
@@ -31,7 +37,7 @@ if (process.env.NODE_ENV === 'production') {
   process.exit(1)
 }
 
-const TENANT_SLUG = 'dev'
+const DEFAULT_TENANT_SLUG = 'dev'
 
 // ── Authoring shapes ─────────────────────────────────────────────────────────
 interface AuthoredOption { id: string; text: string; imageUrl?: string }
@@ -175,22 +181,53 @@ function collectFiles(): string[] {
   return out
 }
 
-// CLI filters: `-- <grade> <subject>`
-const [gradeFilter, subjectFilter] = process.argv.slice(2)
+// CLI: `-- [--tenant <slug>] [<grade> [<subject>]]`
+// The flag is lifted out first so the grade/subject positions keep working
+// regardless of where it appears.
+const argv = process.argv.slice(2)
+let tenantSlug = DEFAULT_TENANT_SLUG
+const positional: string[] = []
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i]
+  if (a === '--tenant') {
+    const next = argv[++i]
+    if (!next) {
+      console.error('\n  ERROR: --tenant needs a slug, e.g. --tenant niaz\n')
+      process.exit(1)
+    }
+    tenantSlug = next
+  } else if (a.startsWith('--tenant=')) {
+    tenantSlug = a.slice('--tenant='.length)
+  } else {
+    positional.push(a)
+  }
+}
+const [gradeFilter, subjectFilter] = positional
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 const created = { subjects: 0, modules: 0, chapters: 0, questions: 0 }
 let skipped = 0
 
-const [tenant] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, TENANT_SLUG))
+const [tenant] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, tenantSlug))
 if (!tenant) {
-  console.error(`\n  ERROR: tenant '${TENANT_SLUG}' not found. Run \`npm run db:seed\` first.\n`)
+  console.error(`\n  ERROR: tenant '${tenantSlug}' not found.`)
+  // Listing them beats guessing: the slug you want is usually a coaching you
+  // created in the UI, whose slug you never explicitly chose.
+  const all = await db.select({ slug: tenants.slug, name: tenants.name }).from(tenants)
+  if (all.length) {
+    console.error('\n  Existing tenants:')
+    for (const t of all) console.error(`    ${t.slug.padEnd(20)} ${t.name}`)
+    console.error('\n  Pick one with --tenant <slug>.\n')
+  } else {
+    console.error('  No tenants exist at all. Run `npm run db:seed` first.\n')
+  }
   process.exit(1)
 }
 const tenantId = tenant.id
 
 const files = collectFiles()
-console.log(`\nFound ${files.length} data file(s)${gradeFilter ? ` (filter: grade ${gradeFilter}${subjectFilter ? ` / ${subjectFilter}` : ''})` : ''}\n`)
+console.log(`\nImporting into tenant '${tenantSlug}'`)
+console.log(`Found ${files.length} data file(s)${gradeFilter ? ` (filter: grade ${gradeFilter}${subjectFilter ? ` / ${subjectFilter}` : ''})` : ''}\n`)
 
 for (const file of files) {
   const data = JSON.parse(readFileSync(file, 'utf8')) as DataFile

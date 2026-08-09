@@ -96,7 +96,7 @@ export async function classRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Classes'],
         summary: 'List classes',
-        description: 'Returns classes visible to the authenticated user. Owners see all classes; teachers see their own; students see classes they are approved in.',
+        description: 'Returns classes visible to the authenticated user. Owners see all classes; teachers see their own; students see classes they are approved in or awaiting approval on, each carrying `enrollmentStatus`.',
         security: AUTH,
       },
       preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher', 'student')],
@@ -383,7 +383,7 @@ export async function classRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Classes'],
         summary: 'List enrolled students',
-        description: 'Lists students enrolled in the class. Filter by enrollment status with `?status=`.',
+        description: 'Lists students enrolled in the class. Filter by enrollment status with `?status=`. Staff see contact details; a student enrolled in the batch sees approved classmates by name only, and `?status=` is ignored for them.',
         security: AUTH,
         params: {
           type: 'object',
@@ -397,17 +397,20 @@ export async function classRoutes(app: FastifyInstance) {
           },
         },
       },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')],
+      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher', 'student')],
     },
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
+      const user = req.user!
       const { status } = req.query as { status?: string }
 
       const allowed = ['pending', 'approved', 'rejected']
       if (status && !allowed.includes(status)) throw Errors.VALIDATION('status must be pending, approved, or rejected')
 
-      const students = await listClassStudents(id, tenant.id, status)
+      // The service decides what a student may see — it also checks that this
+      // student is actually approved in this batch before answering.
+      const students = await listClassStudents(id, tenant.id, status, { role: user.role, id: user.id })
       reply.send({ students })
     },
   )

@@ -173,9 +173,10 @@ const lifecycleWorker = new Worker(
   EXAM_LIFECYCLE_QUEUE,
   async () => {
     const result = await runLifecycleTick()
-    if (result.started || result.ended || result.completed) {
+    if (result.started || result.ended || result.readyToPublish || result.completed) {
       console.log(
-        `[exam-lifecycle] started=${result.started} ended=${result.ended} completed=${result.completed}`,
+        `[exam-lifecycle] started=${result.started} ended=${result.ended} ` +
+          `readyToPublish=${result.readyToPublish} completed=${result.completed}`,
       )
     }
   },

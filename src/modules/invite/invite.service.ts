@@ -277,7 +277,7 @@ export async function acceptInvite(userId: string, token: string) {
     data: {
       title: 'Invite accepted',
       body: `${user.name} accepted your teacher invite for ${tenant?.name ?? 'your coaching'}.`,
-      link: `/teachers`,
+      link: `/coaching/teachers`,
       metadata: { memberName: user.name },
     },
   })

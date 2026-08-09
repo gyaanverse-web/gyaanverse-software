@@ -14,8 +14,9 @@ import {
 import type { ExamStatus } from '@modules/exam/exam.types.js'
 
 // Results-visibility gate: a PRIVATE (coaching) exam hides scores/reports until
-// the teacher publishes results (status results_published or completed). PUBLIC
-// (self-paced) exams are exempt and show results as soon as they are evaluated.
+// the teacher publishes results, which is the `completed` status — publishing is
+// what finishes the lifecycle. PUBLIC (self-paced) exams are exempt and show
+// results as soon as they are evaluated.
 
 describe('assertResultsVisible', () => {
   async function examWith(visibility: 'private' | 'public_free', status: ExamStatus) {
@@ -28,12 +29,14 @@ describe('assertResultsVisible', () => {
     await expect(assertResultsVisible(exam.id)).rejects.toThrow(/have not been published yet/)
   })
 
-  it('allows a private exam once results are published', async () => {
-    const exam = await examWith('private', 'results_published')
-    await expect(assertResultsVisible(exam.id)).resolves.toBeUndefined()
+  // The whole point of `ready_to_publish`: the marks exist and the teacher can
+  // see them, but nothing has been released to students yet.
+  it('blocks a private exam that is evaluated but not yet published (ready_to_publish)', async () => {
+    const exam = await examWith('private', 'ready_to_publish')
+    await expect(assertResultsVisible(exam.id)).rejects.toThrow(/have not been published yet/)
   })
 
-  it('allows a private exam that has completed', async () => {
+  it('allows a private exam once results are published (completed)', async () => {
     const exam = await examWith('private', 'completed')
     await expect(assertResultsVisible(exam.id)).resolves.toBeUndefined()
   })
@@ -60,7 +63,7 @@ describe('getResults — student score read', () => {
   it('reveals a private exam\'s results once published', async () => {
     const { tenant, owner, student } = await seedTenantWithUsers('pro')
     const exam = await createTestExam({
-      tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'results_published',
+      tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'completed',
     })
     const session = await createTestSession({
       examId: exam.id, studentId: student.id, tenantId: tenant.id, status: 'evaluated',
@@ -126,8 +129,8 @@ describe('getReportForStudent — report read', () => {
 
   it('reveals the report once results are published', async () => {
     const { exam, session, student } = await reportForPrivateExam('under_evaluation')
-    // Teacher publishes results.
-    await db.update(exams).set({ status: 'results_published' }).where(eq(exams.id, exam.id))
+    // Teacher publishes results, which completes the exam.
+    await db.update(exams).set({ status: 'completed' }).where(eq(exams.id, exam.id))
 
     const report = await getReportForStudent(session.id, student.id)
     expect(report).not.toBeNull()
