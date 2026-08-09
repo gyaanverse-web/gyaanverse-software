@@ -2,12 +2,15 @@ import { and, desc, eq, or, inArray } from 'drizzle-orm'
 import { db } from '@shared/db.js'
 import { AppError, Errors } from '@shared/errors.js'
 import { reports, reportItems } from './report.schema.js'
+import { users } from '@modules/auth/auth.schema.js'
 import { examSessions, sessionAnswers } from '@modules/exam-session/exam-session.schema.js'
 import { exams, questions } from '@modules/exam/exam.schema.js'
 import { assertResultsVisible } from '@modules/exam/exam.service.js'
 import { evaluationJobs, questionResults } from '@modules/evaluation/evaluation.schema.js'
 import { dispatch } from '@modules/notification/index.js'
-import type { ReportItem, ReportStatus, ReportSummary } from './report.types.js'
+import type {
+  ReportDetail, ReportItem, ReportStatus, ReportSummary, TeacherReportSummary,
+} from './report.types.js'
 
 // ── Publish ───────────────────────────────────────────────────────────────
 
@@ -136,8 +139,8 @@ export async function createReportForSession(sessionId: string): Promise<{ repor
   //
   // Private (coaching) exams gate results behind the teacher's publish step, so
   // we must NOT tell the student their report is ready here — that notification
-  // fires from the results_published transition (Phase 4). Public marketplace
-  // exams are self-paced and notify immediately.
+  // fires from the `completed` transition, which is the publish. Public
+  // marketplace exams are self-paced and notify immediately.
   if (exam.visibility !== 'private') {
     void dispatch({
       type: 'result_ready',
@@ -146,7 +149,7 @@ export async function createReportForSession(sessionId: string): Promise<{ repor
       data: {
         title: 'Your report is ready',
         body: `Your ${exam.title} report has been published. You scored ${totalScore} out of ${maxScore}.`,
-        link: `/exams/${session.examId}/results/${sessionId}`,
+        link: `/student/exams/${session.examId}/results/${sessionId}`,
         metadata: { reportId, sessionId, examId: session.examId },
       },
     })
@@ -172,16 +175,28 @@ export async function getReportForStudent(sessionId: string, studentId: string) 
   return { ...report, items }
 }
 
-export async function getReportForTenant(reportId: string, tenantId: string) {
-  const [report] = await db
-    .select()
+export async function getReportForTenant(reportId: string, tenantId: string): Promise<ReportDetail> {
+  const [row] = await db
+    .select({
+      report: reports,
+      studentName: users.name,
+      studentEmail: users.email,
+    })
     .from(reports)
+    .innerJoin(users, eq(users.id, reports.studentId))
     .where(and(eq(reports.id, reportId), eq(reports.tenantId, tenantId)))
     .limit(1)
-  if (!report) throw Errors.NOT_FOUND('Report')
+  if (!row) throw Errors.NOT_FOUND('Report')
 
-  const items = await loadReportItems(report.id)
-  return { ...report, items }
+  const items = await loadReportItems(row.report.id)
+  return {
+    ...row.report,
+    // The column is a varchar; the union lives in the type layer.
+    status: row.report.status as ReportStatus,
+    studentName: row.studentName,
+    studentEmail: row.studentEmail,
+    items,
+  }
 }
 
 export async function listReportsForStudent(studentId: string): Promise<ReportSummary[]> {
@@ -205,11 +220,12 @@ export async function listReportsForStudent(studentId: string): Promise<ReportSu
     .where(
       and(
         eq(reports.studentId, studentId),
-        // Private exams appear in the list only once results are published;
-        // public (self-paced) exam reports are always visible.
+        // Private exams appear in the list only once results are published —
+        // which is the `completed` status, since publishing finishes the
+        // lifecycle. Public (self-paced) exam reports are always visible.
         or(
           inArray(exams.visibility, ['public_free', 'public_paid']),
-          inArray(exams.status, ['results_published', 'completed']),
+          inArray(exams.status, ['completed']),
         ),
       ),
     )
@@ -221,7 +237,7 @@ export async function listReportsForExam(
   tenantId: string,
   requesterId: string,
   requesterRole: string,
-): Promise<ReportSummary[]> {
+): Promise<TeacherReportSummary[]> {
   const [exam] = await db
     .select({ id: exams.id, createdBy: exams.createdBy })
     .from(exams)
@@ -239,6 +255,8 @@ export async function listReportsForExam(
       examId: reports.examId,
       examTitle: exams.title,
       studentId: reports.studentId,
+      studentName: users.name,
+      studentEmail: users.email,
       totalScore: reports.totalScore,
       maxScore: reports.maxScore,
       autoScore: reports.autoScore,
@@ -249,8 +267,11 @@ export async function listReportsForExam(
     })
     .from(reports)
     .innerJoin(exams, eq(exams.id, reports.examId))
+    .innerJoin(users, eq(users.id, reports.studentId))
     .where(eq(reports.examId, examId))
-    .orderBy(desc(reports.createdAt)) as Promise<ReportSummary[]>
+    // Marks lists are read by name, not by recency — a reviewer scanning for a
+    // student should not have to hunt through submission order.
+    .orderBy(users.name) as Promise<TeacherReportSummary[]>
 }
 
 // ── Internal ──────────────────────────────────────────────────────────────

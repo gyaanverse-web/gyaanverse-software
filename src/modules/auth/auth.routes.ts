@@ -2,9 +2,31 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { fromNodeHeaders } from 'better-auth/node'
 import { auth } from '../../config/auth.js'
 import { authenticate } from '../../middleware/auth.middleware.js'
+import { throttleBy, clearThrottle } from '../../shared/rate-limit.js'
 import { getCurrentUser, updateProfile, updateProfileSchema } from './auth.service.js'
 
 const AUTH = [{ bearerAuth: [] }]
+
+/**
+ * Force IP keying on the unauthenticated credential endpoints.
+ *
+ * The global limiter prefers the session cookie so a NAT'd classroom doesn't
+ * share one bucket — but that would be a hole here: anyone attacking sign-in
+ * can mint a fresh cookie per request and get a fresh bucket with it. Callers
+ * of these routes have no legitimate session yet, so the network origin is the
+ * only ceiling worth enforcing.
+ *
+ * This is only a flood guard. The real brute-force defence is `throttleBy`,
+ * which counts attempts against the *credential* being targeted and therefore
+ * survives an attacker who rotates IPs.
+ */
+const byIp = (req: FastifyRequest) => `ip:${req.ip ?? 'unknown'}`
+
+/** Read a credential off a JSON body without asserting the body is well-formed. */
+function credential(body: unknown, field: 'email' | 'phoneNumber'): string | null {
+  const value = (body as Record<string, unknown> | null)?.[field]
+  return typeof value === 'string' && value.trim() !== '' ? value : null
+}
 
 async function betterAuthHandler(req: FastifyRequest, reply: FastifyReply) {
   const url = new URL(req.url, `http://${req.headers.host}`)
@@ -65,9 +87,10 @@ export async function authRoutes(app: FastifyInstance) {
           required: ['email'],
         },
       },
-      // Unauthenticated and sends mail on demand — rate limit it like the other
-      // auth endpoints so it can't be used to spam an inbox.
-      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      // Unauthenticated and sends mail on demand. The per-IP ceiling is only a
+      // flood guard; the per-address throttle below is what stops one inbox
+      // being spammed by an attacker spread across many IPs.
+      config: { rateLimit: { max: 20, timeWindow: '1 minute', keyGenerator: byIp } },
     },
     async (req, reply) => {
       const { email } = (req.body ?? {}) as { email?: string }
@@ -78,6 +101,12 @@ export async function authRoutes(app: FastifyInstance) {
 
       const normalized = email.trim().toLowerCase()
       const generic = { message: 'If an account with that email exists, a reset link has been sent.' }
+
+      // Before the phone-account check below, so the throttle behaves identically
+      // for addresses that exist and those that don't — a 429 that only fired for
+      // real accounts would be an account-existence oracle, defeating the generic
+      // response this route is careful to give.
+      await throttleBy('pwreset', normalized, 3, 15 * 60)
 
       // Phone-only accounts — silently skip without revealing whether the account exists
       if (normalized.endsWith('@phone.gyanverse.app')) {
@@ -116,7 +145,9 @@ export async function authRoutes(app: FastifyInstance) {
           },
         },
       },
-      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      // No per-address throttle: there is no existing credential to guess, and
+      // a duplicate address is already rejected by the unique constraint.
+      config: { rateLimit: { max: 20, timeWindow: '1 minute', keyGenerator: byIp } },
     },
     betterAuthHandler,
   )
@@ -138,7 +169,22 @@ export async function authRoutes(app: FastifyInstance) {
           },
         },
       },
-      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      config: { rateLimit: { max: 60, timeWindow: '1 minute', keyGenerator: byIp } },
+      // Brute force is one account against many passwords, so the budget belongs
+      // to the account. The old 10/min per IP punished the wrong party entirely:
+      // a coaching centre signing in at 8:55am is thirty people on one NAT, and
+      // they would lock each other out of the login form.
+      preHandler: async (req: FastifyRequest) => {
+        const email = credential(req.body, 'email')
+        if (email) await throttleBy('signin', email, 10, 15 * 60)
+      },
+      // Only failures should count. Clearing on success means a teacher moving
+      // between phone, laptop and lab desktop never spends the attacker's budget.
+      onResponse: async (req: FastifyRequest, reply: FastifyReply) => {
+        if (reply.statusCode >= 400) return
+        const email = credential(req.body, 'email')
+        if (email) await clearThrottle('signin', email)
+      },
     },
     betterAuthHandler,
   )
@@ -158,7 +204,15 @@ export async function authRoutes(app: FastifyInstance) {
           },
         },
       },
-      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      config: { rateLimit: { max: 30, timeWindow: '1 minute', keyGenerator: byIp } },
+      // The strictest throttle in the file, because every call here is real
+      // MSG91 spend and an unthrottled endpoint is an SMS-bombing tool pointed
+      // at whichever number the attacker types. Never cleared on success — a
+      // delivered OTP is exactly what we are budgeting, not a failure to retry.
+      preHandler: async (req: FastifyRequest) => {
+        const phone = credential(req.body, 'phoneNumber')
+        if (phone) await throttleBy('otp-send', phone, 3, 10 * 60)
+      },
     },
     betterAuthHandler,
   )
@@ -179,7 +233,19 @@ export async function authRoutes(app: FastifyInstance) {
           },
         },
       },
-      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      config: { rateLimit: { max: 60, timeWindow: '1 minute', keyGenerator: byIp } },
+      // A 6-digit OTP is only 10^6 wide, so the guess budget per number is the
+      // control that matters — a separate bucket from 'otp-send' so burning
+      // verify attempts can't also block a legitimate resend.
+      preHandler: async (req: FastifyRequest) => {
+        const phone = credential(req.body, 'phoneNumber')
+        if (phone) await throttleBy('otp-verify', phone, 10, 10 * 60)
+      },
+      onResponse: async (req: FastifyRequest, reply: FastifyReply) => {
+        if (reply.statusCode >= 400) return
+        const phone = credential(req.body, 'phoneNumber')
+        if (phone) await clearThrottle('otp-verify', phone)
+      },
     },
     betterAuthHandler,
   )
@@ -192,7 +258,9 @@ export async function authRoutes(app: FastifyInstance) {
         summary: 'Sign out',
         description: 'Clears the session cookie.',
       },
-      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      // Nothing to brute-force here; it was only tight by association with the
+      // sign-in endpoints above.
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
     },
     betterAuthHandler,
   )
@@ -205,7 +273,9 @@ export async function authRoutes(app: FastifyInstance) {
         summary: 'Get current session',
         description: 'Returns the active session or `null` if unauthenticated.',
       },
-      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      // No override on purpose — this inherits the global 500/min. It is a read
+      // that every page performs on mount, not a credential endpoint, and the
+      // 10/min it used to carry was exhausted by ten client-side navigations.
     },
     betterAuthHandler,
   )
@@ -222,7 +292,10 @@ export async function authRoutes(app: FastifyInstance) {
       description: 'Handles internal Better Auth callbacks (email verification, OAuth, CSRF). Not for direct client use.',
       hide: true,
     },
-    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    // Loosened from 10/min: this carries email-verification and OAuth callbacks,
+    // which a user can legitimately hit several times in a row (a redirect chain
+    // plus a re-sent verification link) and where a 429 strands them mid-signup.
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
     handler: betterAuthHandler,
   })
 

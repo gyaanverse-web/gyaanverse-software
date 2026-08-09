@@ -128,6 +128,24 @@ export const auth = betterAuth({
         defaultValue: 'student',
         input: false, // server-controlled only
       },
+      // The one role-ish field the client MAY set, because it grants nothing:
+      // every permission is authorised off the `memberships` row by
+      // requireTenantRole, so claiming 'coaching_owner' here buys you exactly
+      // one thing — being sent to /create-coaching instead of /student.
+      //
+      // Whitelisted through `transform.input` rather than an enum `type`:
+      // Better Auth maps an array type to `z.any()` (see dist/db/to-zod), so an
+      // enum would not actually validate. The transform only runs when the key
+      // is present; omitting it falls through to defaultValue.
+      signupIntent: {
+        type: 'string',
+        required: false,
+        defaultValue: 'student',
+        input: true,
+        transform: {
+          input: (value: unknown) => (value === 'coaching_owner' ? 'coaching_owner' : 'student'),
+        },
+      },
       tenantId: {
         type: 'string',
         required: false,

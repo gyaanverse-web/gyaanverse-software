@@ -24,6 +24,11 @@ export function requireRole(...roles: Role[]) {
 
 // Checks the user's role in the resolved tenant's memberships table, not the global user.role.
 // Must run after both `authenticate` and `tenantMiddleware`.
+//
+// The resolved membership role is published on `req.tenantRole` so handlers and
+// services authorise on the role the caller holds *in this coaching*. Reading
+// `req.user.role` for a tenant decision is a bug: the account role is global and
+// a user can own one coaching while teaching in another.
 export function requireTenantRole(...roles: Role[]) {
   return async (req: FastifyRequest, _reply: FastifyReply): Promise<void> => {
     if (!req.user) throw new AppError('UNAUTHORIZED', 'Authentication required', 401)
@@ -38,5 +43,7 @@ export function requireTenantRole(...roles: Role[]) {
     if (!membership || !roles.includes(membership.role as Role)) {
       throw new AppError('FORBIDDEN', 'Insufficient permissions', 403)
     }
+
+    req.tenantRole = membership.role as Role
   }
 }

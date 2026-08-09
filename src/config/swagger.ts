@@ -26,12 +26,21 @@ Routes prefixed with \`/tenant/\` require a tenant context resolved from:
 
 ### Roles
 
-| Role | Who |
+There are two independent role layers. **Tenant roles** are per-coaching and
+live in the \`memberships\` table (checked by \`requireTenantRole\`); the
+**platform role** is a single value on the user account (checked by
+\`requireRole\`). The same person can own one coaching and teach at another, so
+never infer a tenant role from the platform role.
+
+| Tenant role | Who |
 |------|-----|
-| \`coaching_owner\` | Owner of a coaching institute |
+| \`coaching_owner\` | Owner of a coaching institute. The PRD calls this role "Admin" — it approves, schedules and runs exams (see the **Exam Review** tag). |
 | \`teacher\` | Teacher within a coaching |
 | \`student\` | Student enrolled in a coaching |
-| \`super_admin\` | Platform administrator |
+
+| Platform role | Who |
+|------|-----|
+| \`super_admin\` | Gyanverse platform operator, above all coachings. Currently used only for the global question-bank catalog — there is no super-admin portal. |
       `.trim(),
       version: '1.0.0',
     },

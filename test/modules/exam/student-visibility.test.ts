@@ -44,7 +44,7 @@ async function seedLinkedExam(
 describe('listAvailableExamsForStudent — lifecycle visibility', () => {
   it('includes scheduled, live and post-live exams; hides pre-approval states', async () => {
     const s = await seedEnrolledStudent()
-    const visible: ExamStatus[] = ['scheduled', 'live', 'under_evaluation', 'results_published', 'completed']
+    const visible: ExamStatus[] = ['scheduled', 'live', 'under_evaluation', 'ready_to_publish', 'completed']
     const hidden: ExamStatus[] = ['draft', 'under_review', 'changes_requested', 'rejected', 'approved', 'archived']
 
     const visibleIds = new Set<string>()
@@ -76,6 +76,58 @@ describe('listAvailableExamsForStudent — lifecycle visibility', () => {
     expect(row).toBeDefined()
     expect(row!.mySessions.map((x) => x.id)).toEqual([mine.id])
     expect(row!.mySessions[0].status).toBe('in_progress')
+  })
+
+  // `classIds` is what lets a single batch's screen filter this list without an
+  // endpoint of its own, so it has to name every batch of the student's the exam
+  // reached — and no others.
+  describe('classIds', () => {
+    it('names the batch the exam was assigned to', async () => {
+      const s = await seedEnrolledStudent()
+      const exam = await seedLinkedExam(s, 'live')
+
+      const list = await listAvailableExamsForStudent(s.student.id, s.tenant.id)
+      const row = list.find((e) => e.id === exam.id)
+      expect(row!.classIds).toEqual([s.cls.id])
+    })
+
+    it("names both batches when the exam reached two of the student's", async () => {
+      const s = await seedEnrolledStudent()
+      const second = await createTestClass({ tenantId: s.tenant.id, teacherId: s.teacher.id })
+      await enrollStudent({ classId: second.id, studentId: s.student.id, status: 'approved' })
+
+      const exam = await seedLinkedExam(s, 'live')
+      await linkExamToClass(exam.id, second.id)
+
+      const list = await listAvailableExamsForStudent(s.student.id, s.tenant.id)
+      const row = list.find((e) => e.id === exam.id)
+      expect([...row!.classIds].sort()).toEqual([s.cls.id, second.id].sort())
+    })
+
+    it('omits a batch the student is not in, even when the same exam was assigned there', async () => {
+      const s = await seedEnrolledStudent()
+      const notMine = await createTestClass({ tenantId: s.tenant.id, teacherId: s.teacher.id })
+
+      const exam = await seedLinkedExam(s, 'live')
+      await linkExamToClass(exam.id, notMine.id)
+
+      const list = await listAvailableExamsForStudent(s.student.id, s.tenant.id)
+      const row = list.find((e) => e.id === exam.id)
+      expect(row!.classIds).toEqual([s.cls.id])
+    })
+
+    it('omits a batch whose enrollment is still pending', async () => {
+      const s = await seedEnrolledStudent()
+      const waiting = await createTestClass({ tenantId: s.tenant.id, teacherId: s.teacher.id })
+      await enrollStudent({ classId: waiting.id, studentId: s.student.id, status: 'pending' })
+
+      const exam = await seedLinkedExam(s, 'live')
+      await linkExamToClass(exam.id, waiting.id)
+
+      const list = await listAvailableExamsForStudent(s.student.id, s.tenant.id)
+      const row = list.find((e) => e.id === exam.id)
+      expect(row!.classIds).toEqual([s.cls.id])
+    })
   })
 })
 

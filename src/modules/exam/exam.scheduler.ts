@@ -10,10 +10,22 @@ import { forceSubmitActiveSessions } from '@modules/exam-session/exam-session.se
 
 // Time-triggered exam lifecycle. A repeatable BullMQ job ("tick") runs every
 // minute and drives the automatic transitions the PRD requires:
-//   scheduled → live              at scheduledAt
-//   live → under_evaluation       at endsAt (force-submitting active sessions)
-//   results_published → completed once every session is settled
+//   scheduled → live                    at scheduledAt
+//   live → under_evaluation             at endsAt (force-submitting active sessions)
+//   under_evaluation → ready_to_publish once every session is settled
+//   ready_to_publish → completed        PUBLIC exams only (see below)
 // All transitions go through `transitionExam` with a null (system) actor.
+//
+// The last two used to be one step. Splitting them is what gives the teacher a
+// review window: the worker's job ends at "everything is graded", and a human
+// decides whether those grades go out. Private exams therefore STOP at
+// `ready_to_publish` and wait — deliberately, possibly forever.
+//
+// Public (marketplace) exams are the exception. They are self-paced, have no
+// coaching teacher standing behind them, and already show results as soon as
+// they are evaluated (`assertResultsVisible` exempts them). Parking one in
+// `ready_to_publish` would mean waiting for a click nobody is going to make, so
+// the worker publishes them itself.
 
 export const EXAM_LIFECYCLE_QUEUE = 'exam-lifecycle'
 const TICK_JOB = 'lifecycle-tick'
@@ -46,10 +58,16 @@ export async function ensureLifecycleSchedule(): Promise<void> {
  * overrides: `transitionExam` rejects any transition that no longer applies, so
  * a race just no-ops. Returns per-bucket counts for logging.
  */
-export async function runLifecycleTick(): Promise<{ started: number; ended: number; completed: number }> {
+export async function runLifecycleTick(): Promise<{
+  started: number
+  ended: number
+  readyToPublish: number
+  completed: number
+}> {
   const now = new Date()
   let started = 0
   let ended = 0
+  let readyToPublish = 0
   let completed = 0
 
   // scheduled → live (start of window)
@@ -81,24 +99,51 @@ export async function runLifecycleTick(): Promise<{ started: number; ended: numb
     }
   }
 
-  // results_published → completed, once no session is still running/awaiting eval
-  const published = await db
+  // under_evaluation → ready_to_publish, once no session is still running or
+  // awaiting evaluation. `submitted` means "graded objectively, subjective
+  // answers still with the AI evaluator", so it counts as pending — an exam is
+  // only ready for the teacher's review when every report is final.
+  //
+  // An exam nobody attempted has zero sessions and so passes immediately; that
+  // is correct (there is nothing left to grade), and the teacher's review screen
+  // shows an empty roster.
+  const evaluating = await db
     .select({ id: exams.id, tenantId: exams.tenantId })
     .from(exams)
-    .where(eq(exams.status, 'results_published'))
-  for (const e of published) {
+    .where(eq(exams.status, 'under_evaluation'))
+  for (const e of evaluating) {
     const [{ pending }] = await db
       .select({ pending: sql<number>`count(*)::int` })
       .from(examSessions)
       .where(and(eq(examSessions.examId, e.id), inArray(examSessions.status, ['in_progress', 'submitted'])))
     if (pending > 0) continue
     try {
-      await transitionExam({ examId: e.id, tenantId: e.tenantId, to: 'completed', actor: null })
-      completed++
+      await transitionExam({ examId: e.id, tenantId: e.tenantId, to: 'ready_to_publish', actor: null })
+      readyToPublish++
     } catch (err) {
-      console.error(`[exam-lifecycle] complete failed for ${e.id}:`, err)
+      console.error(`[exam-lifecycle] ready-to-publish failed for ${e.id}:`, err)
     }
   }
 
-  return { started, ended, completed }
+  // ready_to_publish → completed, PUBLIC exams only. Private exams wait for the
+  // teacher's explicit publish (see the header note).
+  const autoPublish = await db
+    .select({ id: exams.id, tenantId: exams.tenantId })
+    .from(exams)
+    .where(
+      and(
+        eq(exams.status, 'ready_to_publish'),
+        inArray(exams.visibility, ['public_free', 'public_paid']),
+      ),
+    )
+  for (const e of autoPublish) {
+    try {
+      await transitionExam({ examId: e.id, tenantId: e.tenantId, to: 'completed', actor: null })
+      completed++
+    } catch (err) {
+      console.error(`[exam-lifecycle] auto-publish failed for ${e.id}:`, err)
+    }
+  }
+
+  return { started, ended, readyToPublish, completed }
 }

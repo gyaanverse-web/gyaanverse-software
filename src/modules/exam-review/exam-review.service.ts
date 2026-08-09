@@ -3,12 +3,13 @@ import { db } from '../../shared/db.js'
 import { Errors } from '../../shared/errors.js'
 import { exams, examClasses } from '../exam/exam.schema.js'
 import { examSessions } from '../exam-session/exam-session.schema.js'
-import { transitionExam } from '../exam/exam.service.js'
+import { transitionExam, resolveTenantClasses } from '../exam/exam.service.js'
 import { forceSubmitActiveSessions } from '../exam-session/exam-session.service.js'
 
-// The PRD "Admin" is the coaching_owner. These are owner-only exam-lifecycle
-// controls that sit on top of the exam state machine (`transitionExam`), which
-// enforces the allowed transitions, the acting role, and the audit trail.
+// The PRD "Admin" is the coaching_owner — a TENANT role, not the platform
+// `super_admin`. These are owner-only exam-lifecycle controls that sit on top of
+// the exam state machine (`transitionExam`), which enforces the allowed
+// transitions, the acting role, and the audit trail.
 
 type Actor = { id: string; role: string }
 
@@ -25,36 +26,71 @@ async function loadTenantExam(examId: string, tenantId: string) {
 // ── Review decisions ─────────────────────────────────────────────────────────
 
 /**
- * Approve a submitted exam and schedule it. Sets the run window / class-batch
- * assignment, then walks `under_review → approved → scheduled` (two audited
- * hops). Owner-only (enforced by `transitionExam`).
+ * Approve a submitted exam (`under_review → approved`). Owner-only (enforced by
+ * `transitionExam`).
+ *
+ * Approval is a VERDICT ONLY — it deliberately does not schedule. The admin is
+ * saying "this paper is good"; picking a date is a separate decision they make
+ * whenever a slot is free, possibly days later. Fusing the two used to force a
+ * date at approval time and, when none was given, parked the exam in `scheduled`
+ * with a null `scheduledAt` — a state the lifecycle worker skips
+ * (`isNotNull(scheduledAt)`), so the exam could never go live. See
+ * `scheduleExam` for the second half.
  */
-export async function approveAndScheduleExam(
+export async function approveExam(examId: string, tenantId: string, actor: Actor) {
+  const exam = await loadTenantExam(examId, tenantId)
+  if (exam.status !== 'under_review')
+    throw Errors.VALIDATION(`Only exams under review can be approved (currently ${exam.status})`)
+
+  return transitionExam({ examId, tenantId, to: 'approved', actor })
+}
+
+/**
+ * Set (or change) an approved exam's run window and class assignment.
+ *
+ * Accepts two states on purpose:
+ *   `approved`  → first scheduling, transitions to `scheduled`.
+ *   `scheduled` → re-scheduling before the exam starts; the window moves but the
+ *                 status does not change (there is no `scheduled → scheduled`
+ *                 hop, and none is needed — nothing about the paper's approval
+ *                 has changed). Without this an admin who mistyped a date would
+ *                 have no way to fix it.
+ *
+ * Owner-only. A `live` or later exam is not re-schedulable — use the live
+ * controls (`extendExamTime` / `endExam`) instead.
+ */
+export async function scheduleExam(
   examId: string,
   tenantId: string,
   actor: Actor,
   input: {
     classIds?: string[]
-    scheduledAt?: Date | null
+    scheduledAt: Date
     endsAt?: Date | null
     durationMins?: number
   },
 ) {
-  const exam = await loadTenantExam(examId, tenantId)
-  if (exam.status !== 'under_review')
-    throw Errors.VALIDATION(`Only exams under review can be approved (currently ${exam.status})`)
+  if (actor.role !== 'coaching_owner') throw Errors.FORBIDDEN()
 
-  if (input.scheduledAt && input.endsAt && input.endsAt <= input.scheduledAt)
+  const exam = await loadTenantExam(examId, tenantId)
+  if (exam.status !== 'approved' && exam.status !== 'scheduled')
+    throw Errors.VALIDATION(
+      `Only an approved exam can be scheduled (currently ${exam.status})`,
+    )
+
+  // A start time already in the past would be picked up by the very next
+  // lifecycle tick and go live immediately — almost always a typo rather than an
+  // intent. "Start it right now" has its own explicit control (`goLiveExam`).
+  if (input.scheduledAt.getTime() <= Date.now())
+    throw Errors.VALIDATION('scheduledAt must be in the future')
+
+  if (input.endsAt && input.endsAt <= input.scheduledAt)
     throw Errors.VALIDATION('endsAt must be after scheduledAt')
 
-  // A private exam must reach at least one class. The submit gate already
-  // guaranteed this; only block the admin from clearing it to empty here.
-  if (exam.visibility === 'private' && input.classIds && input.classIds.length === 0)
-    throw Errors.VALIDATION('A private exam needs at least one class to be scheduled')
+  if (input.classIds) await resolveTenantClasses(input.classIds, tenantId)
 
   await db.transaction(async (tx) => {
-    const patch: Record<string, unknown> = { updatedAt: new Date() }
-    if (input.scheduledAt !== undefined) patch.scheduledAt = input.scheduledAt
+    const patch: Record<string, unknown> = { scheduledAt: input.scheduledAt, updatedAt: new Date() }
     if (input.endsAt !== undefined) patch.endsAt = input.endsAt
     if (input.durationMins !== undefined) patch.durationMins = input.durationMins
     await tx.update(exams).set(patch).where(eq(exams.id, examId))
@@ -64,10 +100,23 @@ export async function approveAndScheduleExam(
       if (input.classIds.length > 0)
         await tx.insert(examClasses).values(input.classIds.map((classId) => ({ examId, classId })))
     }
+
+    // A private exam reaches students only through class assignment, so it must
+    // still have at least one class once any replacement above is applied.
+    // Checked inside the transaction so a rejection rolls the window and the
+    // class links back rather than leaving the exam half-updated.
+    if (exam.visibility === 'private') {
+      const [{ count }] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(examClasses)
+        .where(eq(examClasses.examId, examId))
+      if (count === 0)
+        throw Errors.VALIDATION('A private exam needs at least one class to be scheduled')
+    }
   })
 
-  await transitionExam({ examId, tenantId, to: 'approved', actor })
-  return transitionExam({ examId, tenantId, to: 'scheduled', actor })
+  if (exam.status === 'approved') return transitionExam({ examId, tenantId, to: 'scheduled', actor })
+  return loadTenantExam(examId, tenantId)
 }
 
 /** Bounce a submitted exam back to the teacher with remarks (under_review → changes_requested). */

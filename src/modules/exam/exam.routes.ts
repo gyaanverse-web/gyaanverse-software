@@ -5,15 +5,16 @@ import { authenticate, requireTenantRole } from '../../middleware/auth.middlewar
 import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
 import {
   createExam, updateExam, submitForReview, archiveExam, publishResults, duplicateExam,
+  startWizardDraft, saveWizardState, listMyDrafts, discardDraft,
   setExamChapters, linkExamToClass, unlinkExamFromClass, listExamClasses,
   addQuestion, updateQuestion, removeQuestion, reorderQuestions,
   listExamsForTenant, listAvailableExamsForStudent, listPublicExams, getExamStatsForTenant,
   getExamFull, getExamForStudent, getPublicExamPreview, getPublicExamForStudent,
 } from './exam.service.js'
-import { EXAM_STATUSES } from './exam.types.js'
-import type { ExamStatus } from './exam.types.js'
+import { EXAM_STATUSES, WIZARD_STEPS } from './exam.types.js'
+import type { ExamStatus, WizardState } from './exam.types.js'
 import {
-  generateExam, keepDraftQuestion, keepAllDraftQuestions, discardDraftQuestion,
+  generateIntoDraft, keepDraftQuestion, keepAllDraftQuestions, discardDraftQuestion,
   regenerateDraftQuestion, editDraftQuestion, finalizeGeneration,
 } from './exam.generation.service.js'
 
@@ -101,10 +102,41 @@ const genParamsSchema = z.object({
 })
 
 const generateSchema = z.object({
-  title: z.string().min(2).max(255),
+  // Optional here (unlike exam creation): the draft already has a title from the
+  // wizard's autosave, and a regenerate run need not resend it.
+  title: z.string().min(2).max(255).optional(),
   visibility: z.enum(['private', 'public_free', 'public_paid']).optional(),
   durationMins: z.number().int().min(1).max(600).optional(),
+  // Classes the paper is for. The wizard collects these in step 1 so the draft
+  // is created already assigned; `submitForReview` requires ≥1 for private exams.
+  classIds: z.array(z.string().uuid()).max(50).optional(),
   params: genParamsSchema,
+})
+
+// ── Wizard autosave ────────────────────────────────────────────────────────
+
+const wizardStateSchema = z.object({
+  classIds: z.array(z.string().uuid()).max(50).optional(),
+  subjectId: z.string().uuid().optional(),
+  scopeType: z.enum(['single', 'multi', 'full-subject', 'custom']).optional(),
+  chapterIds: z.array(z.string().uuid()).max(500).optional(),
+  typeCounts: z.record(z.number().int().min(0).max(200)).optional(),
+  difficultyPct: z.object({
+    easy: z.number().int().min(0).max(100).optional(),
+    medium: z.number().int().min(0).max(100).optional(),
+    hard: z.number().int().min(0).max(100).optional(),
+  }).optional(),
+  verifiedOnly: z.boolean().optional(),
+})
+
+const wizardSaveSchema = z.object({
+  step: z.number().int().min(1).max(WIZARD_STEPS),
+  state: wizardStateSchema,
+  title: z.string().min(1).max(255).optional(),
+})
+
+const startDraftSchema = z.object({
+  title: z.string().min(1).max(255).optional(),
 })
 
 const draftEditSchema = z.object({
@@ -120,7 +152,20 @@ const draftEditSchema = z.object({
 const AUTH = [{ bearerAuth: [] }]
 
 export async function examRoutes(app: FastifyInstance) {
-  const tenantAuth = [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')]
+  // ── Role split ────────────────────────────────────────────────────────────
+  //
+  // Authoring a paper is a TEACHER capability; reviewing, approving, scheduling
+  // and running it is the coaching OWNER's (the PRD "Admin", see
+  // `examReviewRoutes`). They are separate jobs, not a hierarchy — the owner is
+  // not "a teacher with more buttons", so every write below that touches exam
+  // content is teacher-only.
+  //
+  // `requireTenantRole` authorises on the caller's role in THIS coaching (from
+  // `memberships`, published as `req.tenantRole`), never the global account role:
+  // the same person may own one coaching and teach in another.
+  const teacherOnly = [authenticate, tenantMiddleware, requireTenantRole('teacher')]
+  const ownerOnly = [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')]
+  const staffRead = [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')]
   const tenantAny = [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher', 'student')]
 
   // The subject/module/chapter/section/concept catalog moved to the
@@ -153,7 +198,7 @@ export async function examRoutes(app: FastifyInstance) {
         },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const parsed = createExamSchema.safeParse(req.body)
     if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
@@ -184,7 +229,7 @@ export async function examRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const tenant = req.tenant!
     const user = req.user!
-    if (user.role === 'student') {
+    if (req.tenantRole! === 'student') {
       const items = await listAvailableExamsForStudent(user.id, tenant.id)
       return reply.send({ exams: items })
     }
@@ -192,7 +237,7 @@ export async function examRoutes(app: FastifyInstance) {
     const statuses = status
       ? (status.split(',').map((s) => s.trim()).filter((s) => (EXAM_STATUSES as readonly string[]).includes(s)) as ExamStatus[])
       : undefined
-    const items = await listExamsForTenant(tenant.id, user.id, user.role, statuses)
+    const items = await listExamsForTenant(tenant.id, user.id, req.tenantRole!, statuses)
     reply.send({ exams: items })
   })
 
@@ -200,14 +245,14 @@ export async function examRoutes(app: FastifyInstance) {
     schema: {
       tags: ['Exams'],
       summary: 'Exam KPIs',
-      description: 'Aggregate statistics for the exams hub: exam counts by status/visibility, total attempts, and average score.',
+      description: 'Aggregate statistics for the exams hub: exam counts by status/visibility, total attempts, and average score. Scoped like the list — a teacher sees only their own papers, the owner sees the coaching minus drafts (so `byStatus.draft` is always 0 for an owner).',
       security: AUTH,
     },
-    preHandler: tenantAuth,
+    preHandler: staffRead,
   }, async (req, reply) => {
     const tenant = req.tenant!
     const user = req.user!
-    const stats = await getExamStatsForTenant(tenant.id, user.id, user.role)
+    const stats = await getExamStatsForTenant(tenant.id, user.id, req.tenantRole!)
     reply.send({ stats })
   })
 
@@ -215,7 +260,7 @@ export async function examRoutes(app: FastifyInstance) {
     schema: {
       tags: ['Exams'],
       summary: 'Get an exam (full detail)',
-      description: 'Returns the full exam including all questions. Students get a filtered view (no answer keys).',
+      description: 'Returns the full exam including all questions. Students get a filtered view (no answer keys). A teacher may only open their own papers; the coaching owner may open any paper except a draft (404 — an unsubmitted draft is the author\'s private workspace).',
       security: AUTH,
       params: {
         type: 'object',
@@ -228,12 +273,12 @@ export async function examRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string }
     const tenant = req.tenant!
     const user = req.user!
-    if (user.role === 'student') {
+    if (req.tenantRole! === 'student') {
       const { lang } = req.query as { lang?: string }
       const exam = await getExamForStudent(id, user.id, lang)
       return reply.send({ exam })
     }
-    const exam = await getExamFull(id, tenant.id)
+    const exam = await getExamFull(id, tenant.id, user.id, req.tenantRole!)
     reply.send({ exam })
   })
 
@@ -249,7 +294,7 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const parsed = updateExamSchema.safeParse(req.body)
     if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
@@ -261,17 +306,15 @@ export async function examRoutes(app: FastifyInstance) {
       scheduledAt: parsed.data.scheduledAt ? new Date(parsed.data.scheduledAt) : parsed.data.scheduledAt,
       endsAt: parsed.data.endsAt ? new Date(parsed.data.endsAt) : parsed.data.endsAt,
     }
-    const exam = await updateExam(id, tenant.id, user.id, user.role, data as any)
+    const exam = await updateExam(id, tenant.id, user.id, req.tenantRole!, data as any)
     reply.send({ exam })
   })
 
-  // NOTE(phase-3): path stays `/publish` for now but the handler is repurposed
-  // to teacher submit-for-review. Phase 3 renames the path to `/submit`.
-  app.post('/tenant/exams/:id/publish', {
+  app.post('/tenant/exams/:id/submit', {
     schema: {
       tags: ['Exams'],
       summary: 'Submit an exam for review',
-      description: 'Teacher submits a `draft` (or `changes_requested`) exam for admin review, moving it to `under_review`. Requires ≥1 question, ≥1 class for private exams, and the public-mock feature for public exams. Replaces the old direct self-publish.',
+      description: 'The authoring teacher submits a `draft` (or `changes_requested`) exam for owner review, moving it to `under_review`. This is the moment the paper stops being private to its author and appears in the owner\'s approval queue, and the moment the monthly mock quota is charged. Requires ≥1 question, ≥1 class for private exams, and the public-mock feature for public exams.',
       security: AUTH,
       params: {
         type: 'object',
@@ -279,12 +322,12 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const tenant = req.tenant!
     const user = req.user!
-    const exam = await submitForReview(id, tenant.id, user.id, user.role)
+    const exam = await submitForReview(id, tenant.id, user.id, req.tenantRole!)
     reply.send({ exam })
   })
 
@@ -292,7 +335,7 @@ export async function examRoutes(app: FastifyInstance) {
     schema: {
       tags: ['Exams'],
       summary: 'Archive an exam',
-      description: 'Moves the exam to `archived` status, hiding it from students.',
+      description: 'Owner-only. Retires a `completed` exam (`completed → archived`), hiding it from students.',
       security: AUTH,
       params: {
         type: 'object',
@@ -300,12 +343,12 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: ownerOnly,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const tenant = req.tenant!
     const user = req.user!
-    const exam = await archiveExam(id, tenant.id, user.id, user.role)
+    const exam = await archiveExam(id, tenant.id, user.id, req.tenantRole!)
     reply.send({ exam })
   })
 
@@ -313,7 +356,9 @@ export async function examRoutes(app: FastifyInstance) {
     schema: {
       tags: ['Exams'],
       summary: 'Publish exam results',
-      description: 'Teacher publishes results (`under_evaluation → results_published`), revealing scores/reports to students. Until this is called, private-exam results stay hidden.',
+      description:
+        'Publishes results (`ready_to_publish → completed`), revealing scores/reports to students and finishing the lifecycle. ' +
+        'Until this is called, private-exam results stay hidden. Normally the authoring teacher; a coaching owner may publish as an audited break-glass when that teacher is unavailable.',
       security: AUTH,
       params: {
         type: 'object',
@@ -321,12 +366,14 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    // staffRead (teacher + owner) rather than teacherOnly: `publishResults` and
+    // `transitionExam` do the real authorisation, including the owner override.
+    preHandler: staffRead,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const tenant = req.tenant!
     const user = req.user!
-    const exam = await publishResults(id, tenant.id, user.id, user.role)
+    const exam = await publishResults(id, tenant.id, user.id, req.tenantRole!)
     reply.send({ exam })
   })
 
@@ -342,12 +389,12 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const tenant = req.tenant!
     const user = req.user!
-    const exam = await duplicateExam(id, tenant.id, user.id, user.role)
+    const exam = await duplicateExam(id, tenant.id, user.id, req.tenantRole!)
     reply.status(201).send({ exam })
   })
 
@@ -372,14 +419,14 @@ export async function examRoutes(app: FastifyInstance) {
         },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const parsed = reorderSchema.safeParse(req.body)
     if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
     const { id } = req.params as { id: string }
     const tenant = req.tenant!
     const user = req.user!
-    const qs = await reorderQuestions(id, tenant.id, user.id, user.role, parsed.data.orderedIds)
+    const qs = await reorderQuestions(id, tenant.id, user.id, req.tenantRole!, parsed.data.orderedIds)
     reply.send({ questions: qs })
   })
 
@@ -409,14 +456,14 @@ export async function examRoutes(app: FastifyInstance) {
         },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const parsed = questionSchema.safeParse(req.body)
     if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
     const { id } = req.params as { id: string }
     const tenant = req.tenant!
     const user = req.user!
-    const question = await addQuestion(id, tenant.id, user.id, user.role, parsed.data)
+    const question = await addQuestion(id, tenant.id, user.id, req.tenantRole!, parsed.data)
     reply.status(201).send({ question })
   })
 
@@ -434,14 +481,14 @@ export async function examRoutes(app: FastifyInstance) {
         },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const parsed = updateQuestionSchema.safeParse(req.body)
     if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
     const { id, qid } = req.params as { id: string; qid: string }
     const tenant = req.tenant!
     const user = req.user!
-    const question = await updateQuestion(qid, id, tenant.id, user.id, user.role, parsed.data)
+    const question = await updateQuestion(qid, id, tenant.id, user.id, req.tenantRole!, parsed.data)
     reply.send({ question })
   })
 
@@ -459,30 +506,133 @@ export async function examRoutes(app: FastifyInstance) {
         },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const { id, qid } = req.params as { id: string; qid: string }
     const tenant = req.tenant!
     const user = req.user!
-    const result = await removeQuestion(qid, id, tenant.id, user.id, user.role)
+    const result = await removeQuestion(qid, id, tenant.id, user.id, req.tenantRole!)
+    reply.send(result)
+  })
+
+  // ── Test engine: the resumable authoring wizard ───────────────────────────
+  //
+  // The draft exists from the first click, not from the first generated
+  // question: `POST /tenant/exams/wizard` opens it, `PUT …/wizard` autosaves
+  // each step, and `POST …/generate` fills that same draft. A teacher can close
+  // the tab at any point and pick the paper back up from `GET …/drafts`.
+
+  app.post('/tenant/exams/wizard', {
+    schema: {
+      tags: ['Test Engine'],
+      summary: 'Start a new authoring draft',
+      description: 'Opens an empty `draft` exam for the test-engine wizard and returns it. Called the instant the teacher starts the generator, so their work is durable from step 1 — nothing is lost by closing the tab. Does NOT consume the monthly mock quota (that is charged at submit-for-review). Teacher-only.',
+      security: AUTH,
+      body: {
+        type: 'object',
+        properties: { title: { type: 'string', minLength: 1, maxLength: 255 } },
+      },
+    },
+    preHandler: teacherOnly,
+  }, async (req, reply) => {
+    const parsed = startDraftSchema.safeParse(req.body ?? {})
+    if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
+    const exam = await startWizardDraft({
+      tenantId: req.tenant!.id,
+      createdBy: req.user!.id,
+      requesterRole: req.tenantRole!,
+      title: parsed.data.title,
+    })
+    reply.status(201).send({ exam })
+  })
+
+  app.get('/tenant/exams/drafts', {
+    schema: {
+      tags: ['Test Engine'],
+      summary: 'List my unfinished drafts',
+      description: 'The requesting teacher\'s own `draft` exams, newest activity first, with the wizard step each one stopped at — this powers the "resume where you left off" list. Drafts are private to their author: there is no way for anyone else, owner included, to read this.',
+      security: AUTH,
+    },
+    preHandler: teacherOnly,
+  }, async (req, reply) => {
+    const drafts = await listMyDrafts(req.tenant!.id, req.user!.id)
+    reply.send({ drafts })
+  })
+
+  app.put('/tenant/exams/:id/wizard', {
+    schema: {
+      tags: ['Test Engine'],
+      summary: 'Autosave the wizard state',
+      description: 'Persists the step the teacher is on and the form state behind it. Called on every step change and when the tab closes, so it is safe to call often. `state` replaces the stored blob rather than merging (clearing a selection must persist). Rejected once the exam has left `draft`/`changes_requested`, so a stale tab cannot mutate a submitted paper.',
+      security: AUTH,
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      body: {
+        type: 'object',
+        required: ['step', 'state'],
+        properties: {
+          step: { type: 'integer', minimum: 1, maximum: WIZARD_STEPS, description: '1 Class & Subject, 2 Scope, 3 Distribution, 4 Review' },
+          state: { type: 'object', description: 'Wizard form state (classIds, subjectId, scopeType, chapterIds, typeCounts, difficultyPct, verifiedOnly)' },
+          title: { type: 'string', minLength: 1, maxLength: 255, description: 'Written through to the exam title' },
+        },
+      },
+    },
+    preHandler: teacherOnly,
+  }, async (req, reply) => {
+    const parsed = wizardSaveSchema.safeParse(req.body)
+    if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
+    const { id } = req.params as { id: string }
+    const exam = await saveWizardState(id, req.tenant!.id, req.user!.id, req.tenantRole!, {
+      step: parsed.data.step,
+      state: parsed.data.state as WizardState,
+      title: parsed.data.title,
+    })
+    reply.send({ exam })
+  })
+
+  app.delete('/tenant/exams/:id', {
+    schema: {
+      tags: ['Test Engine'],
+      summary: 'Discard a draft',
+      description: 'Deletes an unfinished draft and everything hanging off it. Only a `draft` may be discarded — once a paper has entered the review pipeline it is part of the coaching\'s record and is archived instead. Teacher-only, author-only.',
+      security: AUTH,
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+    preHandler: teacherOnly,
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const result = await discardDraft(id, req.tenant!.id, req.user!.id, req.tenantRole!)
     reply.send(result)
   })
 
   // ── Test engine: generation & draft review ────────────────────────────────
 
-  app.post('/tenant/exams/generate', {
+  app.post('/tenant/exams/:id/generate', {
     schema: {
       tags: ['Test Engine'],
-      summary: 'Generate a draft exam from the question bank',
-      description: 'Picks questions from the bank (pure SQL, no LLM) matching the type & difficulty distributions, copies them into a new draft exam as `pending`, and computes the estimated duration. Returns any buckets the bank could not fully fill.',
+      summary: 'Generate questions into a draft',
+      description: 'Picks questions from the bank (pure SQL, no LLM) matching the type & difficulty distributions, copies them into THIS draft as `pending`, and computes the estimated duration. Re-running it is how the wizard\'s Back button works: the previous generation is replaced, while questions the teacher wrote by hand are kept and moved after the fresh picks. `classIds` replaces the draft\'s class assignment (the exam inherits their grade when they agree). Returns any buckets the bank could not fully fill.',
       security: AUTH,
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
       body: {
         type: 'object',
-        required: ['title', 'params'],
+        required: ['params'],
         properties: {
           title: { type: 'string', minLength: 2, maxLength: 255 },
           visibility: { type: 'string', enum: ['private', 'public_free', 'public_paid'] },
           durationMins: { type: 'integer', minimum: 1, maximum: 600 },
+          classIds: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 50, description: 'Classes this paper is for' },
           params: {
             type: 'object',
             required: ['subjectId', 'totalQuestions', 'typeDistribution', 'difficultyDistribution'],
@@ -503,22 +653,23 @@ export async function examRoutes(app: FastifyInstance) {
         },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const parsed = generateSchema.safeParse(req.body)
     if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
-    const tenant = req.tenant!
-    const user = req.user!
-    const result = await generateExam({
-      tenantId: tenant.id,
-      createdBy: user.id,
-      requesterRole: user.role,
+    const { id } = req.params as { id: string }
+    const result = await generateIntoDraft({
+      examId: id,
+      tenantId: req.tenant!.id,
+      requesterId: req.user!.id,
+      requesterRole: req.tenantRole!,
       title: parsed.data.title,
       visibility: parsed.data.visibility,
       durationMins: parsed.data.durationMins,
+      classIds: parsed.data.classIds,
       params: parsed.data.params,
     })
-    reply.status(201).send(result)
+    reply.send(result)
   })
 
   app.post('/tenant/exams/:id/questions/:qid/keep', {
@@ -532,11 +683,11 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' }, qid: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const { id, qid } = req.params as { id: string; qid: string }
     const user = req.user!
-    const question = await keepDraftQuestion(id, qid, req.tenant!.id, user.id, user.role)
+    const question = await keepDraftQuestion(id, qid, req.tenant!.id, user.id, req.tenantRole!)
     reply.send({ question })
   })
 
@@ -552,11 +703,11 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const user = req.user!
-    const result = await keepAllDraftQuestions(id, req.tenant!.id, user.id, user.role)
+    const result = await keepAllDraftQuestions(id, req.tenant!.id, user.id, req.tenantRole!)
     reply.send(result)
   })
 
@@ -571,11 +722,11 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' }, qid: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const { id, qid } = req.params as { id: string; qid: string }
     const user = req.user!
-    const question = await discardDraftQuestion(id, qid, req.tenant!.id, user.id, user.role)
+    const question = await discardDraftQuestion(id, qid, req.tenant!.id, user.id, req.tenantRole!)
     reply.send({ question })
   })
 
@@ -591,11 +742,11 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' }, qid: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const { id, qid } = req.params as { id: string; qid: string }
     const user = req.user!
-    const question = await regenerateDraftQuestion(id, qid, req.tenant!.id, user.id, user.role)
+    const question = await regenerateDraftQuestion(id, qid, req.tenant!.id, user.id, req.tenantRole!)
     reply.send({ question })
   })
 
@@ -610,13 +761,13 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' }, qid: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const parsed = draftEditSchema.safeParse(req.body)
     if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
     const { id, qid } = req.params as { id: string; qid: string }
     const user = req.user!
-    const question = await editDraftQuestion(id, qid, req.tenant!.id, user.id, user.role, parsed.data)
+    const question = await editDraftQuestion(id, qid, req.tenant!.id, user.id, req.tenantRole!, parsed.data)
     reply.send({ question })
   })
 
@@ -632,11 +783,11 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const user = req.user!
-    const exam = await finalizeGeneration(id, req.tenant!.id, user.id, user.role)
+    const exam = await finalizeGeneration(id, req.tenant!.id, user.id, req.tenantRole!)
     reply.send({ exam })
   })
 
@@ -646,6 +797,7 @@ export async function examRoutes(app: FastifyInstance) {
     schema: {
       tags: ['Exams'],
       summary: 'List classes linked to an exam',
+      description: 'Same visibility rule as the detail view: a teacher sees only their own papers, the owner sees anything except a draft.',
       security: AUTH,
       params: {
         type: 'object',
@@ -653,11 +805,10 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { id: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: staffRead,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    const tenant = req.tenant!
-    const rows = await listExamClasses(id, tenant.id)
+    const rows = await listExamClasses(id, req.tenant!.id, req.user!.id, req.tenantRole!)
     reply.send({ classes: rows })
   })
 
@@ -678,14 +829,14 @@ export async function examRoutes(app: FastifyInstance) {
         properties: { classId: { type: 'string', format: 'uuid' } },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const parsed = z.object({ classId: z.string().uuid() }).safeParse(req.body)
     if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
     const { id } = req.params as { id: string }
     const tenant = req.tenant!
     const user = req.user!
-    const row = await linkExamToClass(id, tenant.id, user.id, user.role, parsed.data.classId)
+    const row = await linkExamToClass(id, tenant.id, user.id, req.tenantRole!, parsed.data.classId)
     reply.status(201).send({ examClass: row })
   })
 
@@ -703,12 +854,12 @@ export async function examRoutes(app: FastifyInstance) {
         },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const { id, classId } = req.params as { id: string; classId: string }
     const tenant = req.tenant!
     const user = req.user!
-    const result = await unlinkExamFromClass(id, tenant.id, user.id, user.role, classId)
+    const result = await unlinkExamFromClass(id, tenant.id, user.id, req.tenantRole!, classId)
     reply.send(result)
   })
 
@@ -733,14 +884,14 @@ export async function examRoutes(app: FastifyInstance) {
         },
       },
     },
-    preHandler: tenantAuth,
+    preHandler: teacherOnly,
   }, async (req, reply) => {
     const parsed = chaptersLinkSchema.safeParse(req.body)
     if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
     const { id } = req.params as { id: string }
     const tenant = req.tenant!
     const user = req.user!
-    const rows = await setExamChapters(id, tenant.id, user.id, user.role, parsed.data.chapterIds)
+    const rows = await setExamChapters(id, tenant.id, user.id, req.tenantRole!, parsed.data.chapterIds)
     reply.send({ chapters: rows })
   })
 
