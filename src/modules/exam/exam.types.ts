@@ -11,9 +11,7 @@ export type QuestionType =
 export type ExamVisibility = 'private' | 'public_free' | 'public_paid'
 
 // Teacher→admin approval / scheduling / live / evaluation lifecycle (PRD v1).
-// Stored lowercase snake_case to match the existing status convention
-// (`draft`/`archived` are carried over; `published` is retired in favour of the
-// explicit lifecycle below). Display labels are mapped in the UI layer.
+// Stored lowercase snake_case. Display labels are mapped in the UI layer.
 //   draft            → teacher authoring
 //   under_review     → submitted, awaiting admin (owner)
 //   changes_requested→ admin bounced back with remarks
@@ -22,9 +20,15 @@ export type ExamVisibility = 'private' | 'public_free' | 'public_paid'
 //   scheduled        → date/time set, waiting to start
 //   live             → in progress (students can attempt)
 //   under_evaluation → window closed, sessions being evaluated
-//   results_published→ teacher published results (student-visible)
-//   completed        → lifecycle finished
+//   ready_to_publish → every session evaluated; teacher reviews the reports
+//   completed        → teacher published results (student-visible) — terminal
 //   archived         → retired from active lists
+//
+// NOTE on `completed`: publishing IS completing. There is deliberately no
+// separate "results published" resting state — the teacher's publish click is
+// the last lifecycle event, so `completed` means "results are out and visible".
+// The state worth having before it is `ready_to_publish`, which is the one a
+// human can actually act on.
 export type ExamStatus =
   | 'draft'
   | 'under_review'
@@ -34,16 +38,30 @@ export type ExamStatus =
   | 'scheduled'
   | 'live'
   | 'under_evaluation'
-  | 'results_published'
+  | 'ready_to_publish'
   | 'completed'
   | 'archived'
 
 // Ordered list of all lifecycle states — handy for validation and iteration.
 export const EXAM_STATUSES: readonly ExamStatus[] = [
   'draft', 'under_review', 'changes_requested', 'rejected', 'approved',
-  'scheduled', 'live', 'under_evaluation', 'results_published', 'completed',
+  'scheduled', 'live', 'under_evaluation', 'ready_to_publish', 'completed',
   'archived',
 ] as const
+
+/**
+ * Lifecycle statuses a student may see at all: an upcoming scheduled exam
+ * (metadata only — questions stay hidden until it goes live), the live exam
+ * itself, and every post-live state (so attempted exams remain reachable for
+ * "results pending" / "result ready"). Attempting is still live-only —
+ * startSession asserts `live` + the schedule window separately.
+ *
+ * Lives here rather than in exam.service so class.service can count a batch's
+ * student-visible exams without importing the exam service.
+ */
+export const STUDENT_VISIBLE_STATUSES: ReadonlySet<ExamStatus> = new Set([
+  'scheduled', 'live', 'under_evaluation', 'ready_to_publish', 'completed',
+])
 
 export type ExamScopeType = 'single_chapter' | 'multi_chapter' | 'full_subject' | 'full_syllabus' | 'custom'
 
@@ -132,17 +150,51 @@ export interface Exam {
   reviewedAt: Date | null
   // Remarks attached to the last review decision (changes_requested / rejected).
   reviewRemarks: string | null
-  // Set when the teacher publishes results (under_evaluation → results_published).
+  // Both set together at the publish click (ready_to_publish → completed), since
+  // publishing is what finishes the lifecycle. Kept as two columns because
+  // `resultsPublishedAt` is what report/marketplace reads already key off.
   resultsPublishedAt: Date | null
-  // Set when the lifecycle finishes (results_published → completed).
   completedAt: Date | null
+  // ── Resumable authoring wizard ────────────────────────────────────────────
+  // Step last reached in the test-engine wizard (1..4), and the form state for
+  // those steps. Null for exams never authored through the wizard.
+  wizardStep: number | null
+  wizardState: WizardState | null
   createdAt: Date
   updatedAt: Date
 }
 
+// The number of steps in the authoring wizard. Kept here (not in the UI) so the
+// server can reject an out-of-range step instead of storing nonsense.
+export const WIZARD_STEPS = 4
+
+/**
+ * Form state for the resumable test-engine wizard, persisted on the draft after
+ * every step so a teacher can close the tab and come back to it.
+ *
+ * Every field is optional: a draft is saved from step 1 onward, long before the
+ * later steps have been filled in. This is UI scratch state — the authoritative
+ * record of what a paper was generated from is `exam.generationParams`, written
+ * by the generator itself.
+ */
+export interface WizardState {
+  classIds?: string[]
+  subjectId?: string
+  // Wizard-level grouping ('single' | 'multi' | 'full-subject' | 'custom').
+  // Distinct from `ExamScopeType`, which the generator derives from the ids.
+  scopeType?: string
+  chapterIds?: string[]
+  // Per-question-type counts, e.g. { mcq_single: 15, numerical: 7 }.
+  typeCounts?: Record<string, number>
+  // Easy/medium/hard weights as percentages summing to 100.
+  difficultyPct?: Partial<Record<'easy' | 'medium' | 'hard', number>>
+  verifiedOnly?: boolean
+}
+
 // One row per status change — powers the PRD "timeline" and approval remarks.
 // `fromStatus` is null for the initial creation; `actorId` is null for
-// system/worker-driven transitions (scheduled→live, live→under_evaluation).
+// system/worker-driven transitions (scheduled→live, live→under_evaluation,
+// under_evaluation→ready_to_publish, and the public-exam auto-publish).
 export interface ExamStatusHistory {
   id: string
   examId: string

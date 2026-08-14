@@ -7,7 +7,7 @@ import {
 } from '@modules/question-bank/index.js'
 import { questionBank } from '@modules/question-bank/question-bank.schema.js'
 import {
-  generateExam, keepDraftQuestion, discardDraftQuestion,
+  startWizardDraft, generateIntoDraft, keepDraftQuestion, discardDraftQuestion,
   regenerateDraftQuestion, editDraftQuestion, finalizeGeneration,
 } from '@modules/exam/index.js'
 import { addQuestion, submitForReview, reorderQuestions, getPublicExamForStudent } from '@modules/exam/exam.service.js'
@@ -18,6 +18,12 @@ import {
 
 // Integration tests for the test-engine generator. They exercise the bank →
 // generation → draft-review path against the real DB.
+//
+// Generation no longer creates an exam of its own: the wizard opens a draft
+// first (`startWizardDraft`) and generation fills THAT draft, so a teacher's
+// work is durable from the first click. `wizardGenerate` below is the two-step
+// flow the UI performs, and papers are authored by the TEACHER — under the hard
+// role split the coaching owner cannot author at all.
 
 type Diff = 'easy' | 'medium' | 'hard'
 
@@ -53,10 +59,34 @@ async function makeActiveQuestion(params: {
   return q
 }
 
-async function seedOwnerWithSubject(plan: 'free' | 'pro' = 'pro') {
-  const { tenant, owner } = await seedTenantWithUsers(plan)
+async function seedTeacherWithSubject(plan: 'free' | 'pro' = 'pro') {
+  const { tenant, owner, teacher } = await seedTenantWithUsers(plan)
   const subject = await createSubject({ tenantId: tenant.id, createdBy: owner.id, name: 'Physics' })
-  return { tenant, owner, subjectId: subject.id }
+  return { tenant, owner, teacher, subjectId: subject.id }
+}
+
+// The wizard flow end to end: open a draft, then fill it from the bank.
+async function wizardGenerate(input: {
+  tenantId: string
+  createdBy: string
+  requesterRole: string
+  title: string
+  classIds?: string[]
+  params: Parameters<typeof generateIntoDraft>[0]['params']
+}) {
+  const draft = await startWizardDraft({
+    tenantId: input.tenantId, createdBy: input.createdBy,
+    requesterRole: input.requesterRole, title: input.title,
+  })
+  return generateIntoDraft({
+    examId: draft.id,
+    tenantId: input.tenantId,
+    requesterId: input.createdBy,
+    requesterRole: input.requesterRole,
+    title: input.title,
+    classIds: input.classIds,
+    params: input.params,
+  })
 }
 
 const easyMcq = (total: number) => ({
@@ -65,17 +95,17 @@ const easyMcq = (total: number) => ({
   difficultyDistribution: { easy: total },
 })
 
-describe('generateExam', () => {
+describe('generateIntoDraft', () => {
   it('fills the buckets, copies questions as pending, and estimates duration', async () => {
-    const { tenant, owner, subjectId } = await seedOwnerWithSubject()
+    const { tenant, owner, teacher, subjectId } = await seedTeacherWithSubject()
     for (let i = 0; i < 5; i++) {
       await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId })
     }
 
-    const result = await generateExam({
+    const result = await wizardGenerate({
       tenantId: tenant.id,
-      createdBy: owner.id,
-      requesterRole: 'coaching_owner',
+      createdBy: teacher.id,
+      requesterRole: 'teacher',
       title: 'Generated Mock',
       params: { subjectId, ...easyMcq(3) },
     })
@@ -101,14 +131,14 @@ describe('generateExam', () => {
   })
 
   it('reports a shortage when the bank cannot fully fill a bucket', async () => {
-    const { tenant, owner, subjectId } = await seedOwnerWithSubject()
+    const { tenant, owner, teacher, subjectId } = await seedTeacherWithSubject()
     await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId })
     await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId })
 
-    const result = await generateExam({
+    const result = await wizardGenerate({
       tenantId: tenant.id,
-      createdBy: owner.id,
-      requesterRole: 'coaching_owner',
+      createdBy: teacher.id,
+      requesterRole: 'teacher',
       title: 'Too big',
       params: { subjectId, ...easyMcq(5) },
     })
@@ -120,7 +150,7 @@ describe('generateExam', () => {
   })
 
   it('only picks active questions — drafts and flagged are ignored', async () => {
-    const { tenant, owner, subjectId } = await seedOwnerWithSubject()
+    const { tenant, owner, teacher, subjectId } = await seedTeacherWithSubject()
     // One active, plus one left as draft (never verified).
     await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId })
     await createBankQuestion({
@@ -130,8 +160,8 @@ describe('generateExam', () => {
       answerKey: { optionId: 'x' },
     })
 
-    const result = await generateExam({
-      tenantId: tenant.id, createdBy: owner.id, requesterRole: 'coaching_owner',
+    const result = await wizardGenerate({
+      tenantId: tenant.id, createdBy: teacher.id, requesterRole: 'teacher',
       title: 'Active only', params: { subjectId, ...easyMcq(5) },
     })
 
@@ -151,8 +181,8 @@ describe('generateExam', () => {
     const qB = await makeActiveQuestion({ tenantId: b.tenant.id, createdBy: b.owner.id, subjectId: globalSubject.id })
 
     // B generates under the global subject.
-    const result = await generateExam({
-      tenantId: b.tenant.id, createdBy: b.owner.id, requesterRole: 'coaching_owner',
+    const result = await wizardGenerate({
+      tenantId: b.tenant.id, createdBy: b.teacher.id, requesterRole: 'teacher',
       title: 'Pooled', params: { subjectId: globalSubject.id, ...easyMcq(5) },
     })
 
@@ -163,15 +193,15 @@ describe('generateExam', () => {
   })
 
   it('source-filtered generation only draws from the requested origin', async () => {
-    const { tenant, owner, subjectId } = await seedOwnerWithSubject()
+    const { tenant, owner, teacher, subjectId } = await seedTeacherWithSubject()
     const pyq = [
       await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId, sourceType: 'pyq' }),
       await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId, sourceType: 'pyq' }),
     ]
     for (let i = 0; i < 3; i++) await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId, sourceType: 'original' })
 
-    const result = await generateExam({
-      tenantId: tenant.id, createdBy: owner.id, requesterRole: 'coaching_owner',
+    const result = await wizardGenerate({
+      tenantId: tenant.id, createdBy: teacher.id, requesterRole: 'teacher',
       title: 'PYQ only', params: { subjectId, ...easyMcq(4), sourceType: 'pyq' },
     })
 
@@ -181,15 +211,15 @@ describe('generateExam', () => {
   })
 
   it('cognitive-level-filtered generation only draws from the requested levels', async () => {
-    const { tenant, owner, subjectId } = await seedOwnerWithSubject()
+    const { tenant, owner, teacher, subjectId } = await seedTeacherWithSubject()
     const apply = [
       await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId, cognitiveLevel: 'apply' }),
       await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId, cognitiveLevel: 'apply' }),
     ]
     for (let i = 0; i < 3; i++) await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId, cognitiveLevel: 'remember' })
 
-    const result = await generateExam({
-      tenantId: tenant.id, createdBy: owner.id, requesterRole: 'coaching_owner',
+    const result = await wizardGenerate({
+      tenantId: tenant.id, createdBy: teacher.id, requesterRole: 'teacher',
       title: 'Apply only', params: { subjectId, ...easyMcq(4), cognitiveLevels: ['apply'] },
     })
 
@@ -199,9 +229,9 @@ describe('generateExam', () => {
   })
 
   it('rejects an invalid distribution before touching the bank', async () => {
-    const { tenant, owner, subjectId } = await seedOwnerWithSubject()
-    await expect(generateExam({
-      tenantId: tenant.id, createdBy: owner.id, requesterRole: 'coaching_owner',
+    const { tenant, owner, teacher, subjectId } = await seedTeacherWithSubject()
+    await expect(wizardGenerate({
+      tenantId: tenant.id, createdBy: teacher.id, requesterRole: 'teacher',
       title: 'Bad', params: {
         subjectId, totalQuestions: 10,
         typeDistribution: { mcq_single: 6 }, // sums to 6, not 10
@@ -215,8 +245,8 @@ describe('generateExam', () => {
     const b = await seedTenantWithUsers('pro')
     const subjectA = await createSubject({ tenantId: a.tenant.id, createdBy: a.owner.id, name: 'A-only' })
 
-    await expect(generateExam({
-      tenantId: b.tenant.id, createdBy: b.owner.id, requesterRole: 'coaching_owner',
+    await expect(wizardGenerate({
+      tenantId: b.tenant.id, createdBy: b.teacher.id, requesterRole: 'teacher',
       title: 'Cross-tenant', params: { subjectId: subjectA.id, ...easyMcq(1) },
     })).rejects.toThrow()
   })
@@ -224,7 +254,7 @@ describe('generateExam', () => {
 
 describe('language variants', () => {
   it('copies bank language variants into generated questions', async () => {
-    const { tenant, owner, subjectId } = await seedOwnerWithSubject()
+    const { tenant, owner, teacher, subjectId } = await seedTeacherWithSubject()
     const q = await createBankQuestion({
       tenantId: tenant.id, createdBy: owner.id, hierarchy: { subjectId },
       type: 'mcq_single', difficulty: 'easy', body: 'English body',
@@ -234,8 +264,8 @@ describe('language variants', () => {
     })
     await verifyBankQuestion(q.id, tenant.id, owner.id)
 
-    const result = await generateExam({
-      tenantId: tenant.id, createdBy: owner.id, requesterRole: 'coaching_owner',
+    const result = await wizardGenerate({
+      tenantId: tenant.id, createdBy: teacher.id, requesterRole: 'teacher',
       title: 'LV', params: { subjectId, ...easyMcq(1) },
     })
     expect(result.questions[0].languageVariants).toEqual({ hi: 'हिंदी प्रश्न' })
@@ -264,32 +294,32 @@ describe('language variants', () => {
 
 describe('draft review', () => {
   async function generateThree() {
-    const { tenant, owner, subjectId } = await seedOwnerWithSubject()
+    const { tenant, owner, teacher, subjectId } = await seedTeacherWithSubject()
     for (let i = 0; i < 6; i++) {
       await makeActiveQuestion({ tenantId: tenant.id, createdBy: owner.id, subjectId })
     }
-    const result = await generateExam({
-      tenantId: tenant.id, createdBy: owner.id, requesterRole: 'coaching_owner',
+    const result = await wizardGenerate({
+      tenantId: tenant.id, createdBy: teacher.id, requesterRole: 'teacher',
       title: 'Review me', params: { subjectId, ...easyMcq(3) },
     })
-    return { tenant, owner, subjectId, exam: result.exam, qs: result.questions }
+    return { tenant, owner, teacher, subjectId, exam: result.exam, qs: result.questions }
   }
 
   it('finalize drops pending + discarded, keeps kept and manual, and renumbers', async () => {
-    const { tenant, owner, exam, qs } = await generateThree()
+    const { tenant, teacher, exam, qs } = await generateThree()
 
-    await keepDraftQuestion(exam.id, qs[0].id, tenant.id, owner.id, 'coaching_owner')
-    await discardDraftQuestion(exam.id, qs[1].id, tenant.id, owner.id, 'coaching_owner')
+    await keepDraftQuestion(exam.id, qs[0].id, tenant.id, teacher.id, 'teacher')
+    await discardDraftQuestion(exam.id, qs[1].id, tenant.id, teacher.id, 'teacher')
     // qs[2] left pending.
 
     // A manually authored question (draftStatus stays null) must survive.
-    await addQuestion(exam.id, tenant.id, owner.id, 'coaching_owner', {
+    await addQuestion(exam.id, tenant.id, teacher.id, 'teacher', {
       type: 'mcq_single', body: 'manual', marks: 2,
       payload: { options: [{ id: 'm', text: 'A' }, { id: 'n', text: 'B' }] },
       answerKey: { optionId: 'm' },
     })
 
-    await finalizeGeneration(exam.id, tenant.id, owner.id, 'coaching_owner')
+    await finalizeGeneration(exam.id, tenant.id, teacher.id, 'teacher')
 
     const remaining = await db.select().from(questions).where(eq(questions.examId, exam.id))
     const ids = remaining.map((r) => r.id).sort()
@@ -302,9 +332,9 @@ describe('draft review', () => {
   })
 
   it('edit updates content + marks and flips the slot to kept', async () => {
-    const { tenant, owner, exam, qs } = await generateThree()
+    const { tenant, teacher, exam, qs } = await generateThree()
     const updated = await editDraftQuestion(
-      exam.id, qs[1].id, tenant.id, owner.id, 'coaching_owner',
+      exam.id, qs[1].id, tenant.id, teacher.id, 'teacher',
       { body: 'Edited question body', marks: 7 },
     )
     expect(updated.body).toBe('Edited question body')
@@ -319,18 +349,18 @@ describe('draft review', () => {
   })
 
   it('reorder rearranges draft questions', async () => {
-    const { tenant, owner, exam, qs } = await generateThree()
+    const { tenant, teacher, exam, qs } = await generateThree()
     const reversed = qs.map((q) => q.id).reverse()
-    const res = await reorderQuestions(exam.id, tenant.id, owner.id, 'coaching_owner', reversed)
+    const res = await reorderQuestions(exam.id, tenant.id, teacher.id, 'teacher', reversed)
     expect(res.map((r) => r.id)).toEqual(reversed)
   })
 
   it('regenerate swaps in a different bank question, keeping the slot pending', async () => {
-    const { tenant, owner, exam, qs } = await generateThree()
+    const { tenant, teacher, exam, qs } = await generateThree()
     const target = qs[0]
     const before = target.bankQuestionId
 
-    const replaced = await regenerateDraftQuestion(exam.id, target.id, tenant.id, owner.id, 'coaching_owner')
+    const replaced = await regenerateDraftQuestion(exam.id, target.id, tenant.id, teacher.id, 'teacher')
 
     expect(replaced.id).toBe(target.id)            // same slot row
     expect(replaced.bankQuestionId).not.toBe(before) // different bank source
@@ -368,19 +398,19 @@ describe('draft review', () => {
   })
 
   it('blocks draft review once the exam leaves draft (submitted for review)', async () => {
-    const { tenant, owner, exam, qs } = await generateThree()
+    const { tenant, teacher, exam, qs } = await generateThree()
     // Keep all three so finalize leaves a submittable exam.
-    for (const q of qs) await keepDraftQuestion(exam.id, q.id, tenant.id, owner.id, 'coaching_owner')
-    await finalizeGeneration(exam.id, tenant.id, owner.id, 'coaching_owner')
+    for (const q of qs) await keepDraftQuestion(exam.id, q.id, tenant.id, teacher.id, 'teacher')
+    await finalizeGeneration(exam.id, tenant.id, teacher.id, 'teacher')
     // Generated exams are private, so they must be assigned to a class before
     // they can be submitted for review.
-    const cls = await createTestClass({ tenantId: tenant.id, teacherId: owner.id })
+    const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
     await linkExamToClass(exam.id, cls.id)
-    const submitted = await submitForReview(exam.id, tenant.id, owner.id, 'coaching_owner')
+    const submitted = await submitForReview(exam.id, tenant.id, teacher.id, 'teacher')
     expect(submitted.status).toBe('under_review')
 
     await expect(
-      discardDraftQuestion(exam.id, qs[0].id, tenant.id, owner.id, 'coaching_owner'),
+      discardDraftQuestion(exam.id, qs[0].id, tenant.id, teacher.id, 'teacher'),
     ).rejects.toThrow(/only allowed while the exam is a draft/)
   })
 })

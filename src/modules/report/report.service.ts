@@ -1,13 +1,17 @@
-import { and, desc, eq, or, inArray } from 'drizzle-orm'
+import { and, desc, eq, isNull, or, inArray } from 'drizzle-orm'
 import { db } from '@shared/db.js'
 import { AppError, Errors } from '@shared/errors.js'
 import { reports, reportItems } from './report.schema.js'
+import { users } from '@modules/auth/auth.schema.js'
 import { examSessions, sessionAnswers } from '@modules/exam-session/exam-session.schema.js'
 import { exams, questions } from '@modules/exam/exam.schema.js'
 import { assertResultsVisible } from '@modules/exam/exam.service.js'
 import { evaluationJobs, questionResults } from '@modules/evaluation/evaluation.schema.js'
 import { dispatch } from '@modules/notification/index.js'
-import type { ReportItem, ReportStatus, ReportSummary } from './report.types.js'
+import type {
+  AwaitingReportSummary,
+  ReportDetail, ReportItem, ReportStatus, ReportSummary, TeacherReportSummary,
+} from './report.types.js'
 
 // ── Publish ───────────────────────────────────────────────────────────────
 
@@ -136,8 +140,8 @@ export async function createReportForSession(sessionId: string): Promise<{ repor
   //
   // Private (coaching) exams gate results behind the teacher's publish step, so
   // we must NOT tell the student their report is ready here — that notification
-  // fires from the results_published transition (Phase 4). Public marketplace
-  // exams are self-paced and notify immediately.
+  // fires from the `completed` transition, which is the publish. Public
+  // marketplace exams are self-paced and notify immediately.
   if (exam.visibility !== 'private') {
     void dispatch({
       type: 'result_ready',
@@ -146,13 +150,108 @@ export async function createReportForSession(sessionId: string): Promise<{ repor
       data: {
         title: 'Your report is ready',
         body: `Your ${exam.title} report has been published. You scored ${totalScore} out of ${maxScore}.`,
-        link: `/exams/${session.examId}/results/${sessionId}`,
+        link: `/student/exams/${session.examId}/results/${sessionId}`,
         metadata: { reportId, sessionId, examId: session.examId },
       },
     })
   }
 
   return { reportId, created: true }
+}
+
+/**
+ * Rebuild a session's report from the current state of its scores.
+ *
+ * `createReportForSession` is idempotent by *early return* — it exists to be
+ * called twice by two paths that both want a report to exist, and returning the
+ * one that is already there is the right answer for both. That makes it exactly
+ * wrong for a correction: a Gyanverse operator scoring a flagged answer by hand
+ * (evaluation.review.ts) changes numbers the report has already frozen, and the
+ * early return would leave the student looking at the placeholder forever.
+ *
+ * So this is the write path for "the scores changed after the fact": create the
+ * report if it is missing, otherwise recompute totals and rewrite the items.
+ * Returns whether anything actually moved, so callers can decide whether the
+ * student is worth notifying.
+ */
+export async function recomputeReportForSession(
+  sessionId: string,
+): Promise<{ reportId: string; created: boolean; changed: boolean }> {
+  const [existing] = await db
+    .select({ id: reports.id, totalScore: reports.totalScore, aiScore: reports.aiScore })
+    .from(reports)
+    .where(eq(reports.sessionId, sessionId))
+    .limit(1)
+
+  if (!existing) {
+    const { reportId } = await createReportForSession(sessionId)
+    return { reportId, created: true, changed: true }
+  }
+
+  const [session] = await db
+    .select({
+      id: examSessions.id,
+      examId: examSessions.examId,
+      autoScore: examSessions.autoScore,
+      manualScore: examSessions.manualScore,
+      totalMarks: examSessions.totalMarks,
+    })
+    .from(examSessions)
+    .where(eq(examSessions.id, sessionId))
+    .limit(1)
+  if (!session) throw Errors.NOT_FOUND('Session')
+
+  const autoScore = session.autoScore ?? 0
+  const aiScore = session.manualScore ?? 0
+  const totalScore = autoScore + aiScore
+  const changed = existing.totalScore !== totalScore || existing.aiScore !== aiScore
+
+  // Only the AI-scored questions can have moved — objective marks are computed
+  // at submit and no manual path touches them. Rewriting just those rows keeps
+  // this from having to reproduce the objective branch of the builder above and
+  // drift away from it.
+  const aiResults = await db
+    .select({
+      questionId: questionResults.questionId,
+      score: questionResults.score,
+      maxScore: questionResults.maxScore,
+      aiFeedback: questionResults.aiFeedback,
+      imageUrl: questionResults.imageUrl,
+    })
+    .from(questionResults)
+    .innerJoin(evaluationJobs, eq(evaluationJobs.id, questionResults.jobId))
+    .where(eq(evaluationJobs.sessionId, sessionId))
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(reports)
+      .set({ totalScore, autoScore, aiScore, maxScore: session.totalMarks })
+      .where(eq(reports.id, existing.id))
+
+    for (const r of aiResults) {
+      await tx
+        .insert(reportItems)
+        .values({
+          reportId: existing.id,
+          questionId: r.questionId,
+          score: r.score,
+          maxScore: r.maxScore,
+          feedback: r.aiFeedback,
+          imageUrl: r.imageUrl,
+        })
+        .onConflictDoUpdate({
+          target: [reportItems.reportId, reportItems.questionId],
+          set: {
+            score: r.score,
+            maxScore: r.maxScore,
+            feedback: r.aiFeedback,
+            imageUrl: r.imageUrl,
+          },
+        })
+    }
+  })
+
+  return { reportId: existing.id, created: false, changed }
 }
 
 // ── Reads ─────────────────────────────────────────────────────────────────
@@ -172,16 +271,28 @@ export async function getReportForStudent(sessionId: string, studentId: string) 
   return { ...report, items }
 }
 
-export async function getReportForTenant(reportId: string, tenantId: string) {
-  const [report] = await db
-    .select()
+export async function getReportForTenant(reportId: string, tenantId: string): Promise<ReportDetail> {
+  const [row] = await db
+    .select({
+      report: reports,
+      studentName: users.name,
+      studentEmail: users.email,
+    })
     .from(reports)
+    .innerJoin(users, eq(users.id, reports.studentId))
     .where(and(eq(reports.id, reportId), eq(reports.tenantId, tenantId)))
     .limit(1)
-  if (!report) throw Errors.NOT_FOUND('Report')
+  if (!row) throw Errors.NOT_FOUND('Report')
 
-  const items = await loadReportItems(report.id)
-  return { ...report, items }
+  const items = await loadReportItems(row.report.id)
+  return {
+    ...row.report,
+    // The column is a varchar; the union lives in the type layer.
+    status: row.report.status as ReportStatus,
+    studentName: row.studentName,
+    studentEmail: row.studentEmail,
+    items,
+  }
 }
 
 export async function listReportsForStudent(studentId: string): Promise<ReportSummary[]> {
@@ -205,23 +316,32 @@ export async function listReportsForStudent(studentId: string): Promise<ReportSu
     .where(
       and(
         eq(reports.studentId, studentId),
-        // Private exams appear in the list only once results are published;
-        // public (self-paced) exam reports are always visible.
+        // Private exams appear in the list only once results are published —
+        // which is the `completed` status, since publishing finishes the
+        // lifecycle. Public (self-paced) exam reports are always visible.
         or(
           inArray(exams.visibility, ['public_free', 'public_paid']),
-          inArray(exams.status, ['results_published', 'completed']),
+          inArray(exams.status, ['completed']),
         ),
       ),
     )
     .orderBy(desc(reports.createdAt)) as Promise<ReportSummary[]>
 }
 
-export async function listReportsForExam(
+/**
+ * Teachers read only their own papers; owners read every paper in the tenant.
+ *
+ * Shared by both exam-scoped reads below rather than copied into each. A guard
+ * duplicated per call site is a guard that gets *tightened* per call site — the
+ * next change to it would have to find every copy, and would miss whichever one
+ * was added last.
+ */
+async function assertCanReadExamReports(
   examId: string,
   tenantId: string,
   requesterId: string,
   requesterRole: string,
-): Promise<ReportSummary[]> {
+) {
   const [exam] = await db
     .select({ id: exams.id, createdBy: exams.createdBy })
     .from(exams)
@@ -231,6 +351,16 @@ export async function listReportsForExam(
   if (requesterRole !== 'coaching_owner' && exam.createdBy !== requesterId) {
     throw new AppError('FORBIDDEN', 'You can only view reports for exams you created', 403)
   }
+  return exam
+}
+
+export async function listReportsForExam(
+  examId: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+): Promise<TeacherReportSummary[]> {
+  await assertCanReadExamReports(examId, tenantId, requesterId, requesterRole)
 
   return db
     .select({
@@ -239,6 +369,8 @@ export async function listReportsForExam(
       examId: reports.examId,
       examTitle: exams.title,
       studentId: reports.studentId,
+      studentName: users.name,
+      studentEmail: users.email,
       totalScore: reports.totalScore,
       maxScore: reports.maxScore,
       autoScore: reports.autoScore,
@@ -249,8 +381,60 @@ export async function listReportsForExam(
     })
     .from(reports)
     .innerJoin(exams, eq(exams.id, reports.examId))
+    .innerJoin(users, eq(users.id, reports.studentId))
     .where(eq(reports.examId, examId))
-    .orderBy(desc(reports.createdAt)) as Promise<ReportSummary[]>
+    // Marks lists are read by name, not by recency — a reviewer scanning for a
+    // student should not have to hunt through submission order.
+    .orderBy(users.name) as Promise<TeacherReportSummary[]>
+}
+
+/**
+ * Students who have a paper in but no report row yet.
+ *
+ * The Reports tab lists `reports`, so a session without one is simply absent —
+ * on a 30-student exam the teacher sees 29 rows and no account of the 30th.
+ * This is what lets the screen name everybody.
+ *
+ * **It deliberately does not say why any given student is here, and the query is
+ * built so it cannot.** Two quite different situations produce a missing report:
+ * the paper is mid-evaluation, or the Phase 6 backstop flagged an answer and is
+ * holding the report until a Gyanverse operator scores it. Returning only the
+ * flagged ones would tell the teacher exactly whose answer the AI could not
+ * read — the failure visibility the whole resilience plan removes, re-created
+ * one screen further along. So the predicate is the *absence of a report* and
+ * nothing else, the two cases are indistinguishable in the response, and the UI
+ * gives them one label.
+ *
+ * Scoped to sessions that can still produce a report: `abandoned` never will,
+ * and `in_progress` is a student still writing, not a result being waited on.
+ */
+export async function listSessionsAwaitingReport(
+  examId: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+): Promise<AwaitingReportSummary[]> {
+  await assertCanReadExamReports(examId, tenantId, requesterId, requesterRole)
+
+  return db
+    .select({
+      sessionId: examSessions.id,
+      studentId: examSessions.studentId,
+      studentName: users.name,
+      studentEmail: users.email,
+      submittedAt: examSessions.submittedAt,
+    })
+    .from(examSessions)
+    .innerJoin(users, eq(users.id, examSessions.studentId))
+    .leftJoin(reports, eq(reports.sessionId, examSessions.id))
+    .where(
+      and(
+        eq(examSessions.examId, examId),
+        inArray(examSessions.status, ['submitted', 'evaluated']),
+        isNull(reports.id),
+      ),
+    )
+    .orderBy(users.name) as Promise<AwaitingReportSummary[]>
 }
 
 // ── Internal ──────────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@ interface EmailTemplate {
 // Shared layout wrapper — keeps all emails visually consistent
 function layout(content: string, link?: string | null): string {
   const button = link
-    ? `<p style="margin:24px 0"><a href="${link}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Open in Gyanverse</a></p>`
+    ? `<p style="margin:24px 0"><a href="${link}" style="background:#2B50F5;color:#fff;padding:12px 24px;border-radius:999px;text-decoration:none;font-weight:600">Open in Gyanverse</a></p>`
     : ''
 
   return `
@@ -90,13 +90,13 @@ function inviteReceived(data: TemplateData & { coachingName: string }): EmailTem
   }
 }
 
-function inviteAccepted(data: TemplateData & { studentName: string }): EmailTemplate {
+function inviteAccepted(data: TemplateData & { memberName: string }): EmailTemplate {
   return {
-    subject: `${data.studentName} accepted your invite`,
+    subject: `${data.memberName} accepted your invite`,
     html: layout(`
       <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
       <p style="margin:0 0 16px;font-size:16px;color:#374151">
-        <strong>${data.studentName}</strong> has accepted your invite and joined your coaching.
+        <strong>${data.memberName}</strong> has accepted your invite and joined your coaching.
       </p>
     `, data.link),
   }
@@ -159,23 +159,43 @@ export function resolveEmailTemplate(
     link: (data.link as string | null) ?? null,
   }
 
+  // Typed templates interpolate fields the dispatcher passes via `metadata`. If a
+  // dispatcher forgets one we must not render the literal string "undefined" into
+  // a subject line — fall back to the notification's own title/body instead.
+  const fallback = () => generic({ ...base, title: data.title as string, body: data.body as string })
+  const need = (...keys: string[]) => keys.every((k) => typeof data[k] === 'string' && data[k] !== '')
+
   switch (type) {
     case 'exam_assigned':
-      return examAssigned({ ...base, examTitle: data.examTitle as string, className: data.className as string })
+      return need('examTitle', 'className')
+        ? examAssigned({ ...base, examTitle: data.examTitle as string, className: data.className as string })
+        : fallback()
     case 'exam_starting_soon':
-      return examStartingSoon({ ...base, examTitle: data.examTitle as string })
+      return need('examTitle')
+        ? examStartingSoon({ ...base, examTitle: data.examTitle as string })
+        : fallback()
     case 'result_ready':
-      return resultReady({ ...base, examTitle: data.examTitle as string })
+      return need('examTitle')
+        ? resultReady({ ...base, examTitle: data.examTitle as string })
+        : fallback()
     case 'invite_received':
-      return inviteReceived({ ...base, coachingName: data.coachingName as string })
+      return need('coachingName')
+        ? inviteReceived({ ...base, coachingName: data.coachingName as string })
+        : fallback()
     case 'invite_accepted':
-      return inviteAccepted({ ...base, studentName: data.studentName as string })
+      return need('memberName')
+        ? inviteAccepted({ ...base, memberName: data.memberName as string })
+        : fallback()
     case 'payment_confirmed':
-      return paymentConfirmed({ ...base, planName: data.planName as string })
+      return need('planName')
+        ? paymentConfirmed({ ...base, planName: data.planName as string })
+        : fallback()
     case 'payment_failed':
       return paymentFailed(base)
     case 'plan_limit_warning':
-      return planLimitWarning({ ...base, limitName: data.limitName as string })
+      return need('limitName')
+        ? planLimitWarning({ ...base, limitName: data.limitName as string })
+        : fallback()
     default:
       return generic({ ...base, title: data.title as string, body: data.body as string })
   }

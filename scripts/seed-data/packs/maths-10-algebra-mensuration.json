@@ -1,0 +1,262 @@
+{
+  "id": "maths-10-algebra-mensuration",
+  "label": "Mathematics 10 — Algebra, Mensuration & Coordinate Geometry",
+  "description": "A second subject with a differently-shaped hierarchy (three modules) so the question bank has more than one tree to filter by. One mensuration question is matched to a real handwritten answer sheet.",
+  "subject": { "name": "Mathematics", "gradeLevel": "10", "code": "MAT10" },
+  "modules": [
+    {
+      "name": "Mensuration",
+      "chapters": [
+        {
+          "name": "Areas Related to Circles",
+          "sections": [
+            {
+              "name": "Area and Circumference",
+              "concepts": [
+                {
+                  "name": "Area of Circles and Triangles",
+                  "questions": [
+                    {
+                      "ref": "mat10-men-01",
+                      "type": "subjective",
+                      "difficulty": "easy",
+                      "marks": 5,
+                      "body": "(i) Find the area and the circumference of a circle of radius 7 cm (take π = 22/7). (ii) Find the area of a triangle whose base is 10 cm and height is 20 cm.",
+                      "rubric": "1 mark: area formula πr². 1 mark: area = 154 cm². 1 mark: circumference = 2πr = 44 cm. 1 mark: triangle formula ½ × b × h. 1 mark: area = 100 cm².",
+                      "sampleAnswer": "(i) Area = πr² = (22/7) × 7 × 7 = 154 cm². Circumference = 2πr = 2 × (22/7) × 7 = 44 cm. (ii) Area = ½ × b × h = ½ × 10 × 20 = 100 cm².",
+                      "explanation": "Two standard formulas; the only trap is quoting cm instead of cm² for areas.",
+                      "tags": ["numerical", "mensuration", "matched-answer-sheet"],
+                      "answerSheets": [
+                        { "file": "testImage4.jpeg", "quality": "correct", "note": "Both parts fully worked: 154 cm², 44 cm, 100 cm²." }
+                      ]
+                    },
+                    {
+                      "ref": "mat10-men-02",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "The circumference of a circle exceeds its diameter by 16.8 cm. Taking π = 22/7, find the radius and the area of the circle.",
+                      "rubric": "2 marks: 2πr − 2r = 16.8. 2 marks: r = 3.92 cm. 1 mark: area = πr² ≈ 48.3 cm².",
+                      "sampleAnswer": "2πr − 2r = 16.8 → 2r(π − 1) = 16.8 → 2r(22/7 − 1) = 16.8 → 2r(15/7) = 16.8 → r = 16.8 × 7/30 = 3.92 cm. Area = (22/7)(3.92)² ≈ 48.3 cm².",
+                      "explanation": "Factor out 2r before substituting π. r = 3.92 cm, area ≈ 48.3 cm².",
+                      "tags": ["numerical", "mensuration"]
+                    },
+                    {
+                      "ref": "mat10-men-03",
+                      "type": "numerical",
+                      "difficulty": "easy",
+                      "marks": 4,
+                      "body": "Find the area (in cm²) of a sector of a circle of radius 6 cm whose central angle is 60°. Take π = 3.14 and give your answer to two decimal places.",
+                      "decimalPlaces": 2,
+                      "tolerance": 0.05,
+                      "answer": 18.84,
+                      "explanation": "Area = (θ/360) × πr² = (60/360) × 3.14 × 36 = 18.84 cm².",
+                      "tags": ["mensuration"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Algebra",
+      "chapters": [
+        {
+          "name": "Quadratic Equations",
+          "sections": [
+            {
+              "name": "Roots and the Discriminant",
+              "concepts": [
+                {
+                  "name": "Nature of Roots",
+                  "questions": [
+                    {
+                      "ref": "mat10-quad-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "Find the values of k for which the equation 2x² + kx + 8 = 0 has equal roots, and find the repeated root in each case.",
+                      "rubric": "2 marks: equal roots ⇒ D = b² − 4ac = 0. 2 marks: k² = 64 → k = ±8. 1 mark: roots x = −k/4, i.e. −2 and 2.",
+                      "sampleAnswer": "Equal roots require D = 0: k² − 4(2)(8) = 0 → k² = 64 → k = ±8. The repeated root is x = −b/2a = −k/4, which is −2 when k = 8 and 2 when k = −8.",
+                      "explanation": "Both signs of k must be reported. k = ±8.",
+                      "tags": ["numerical", "quadratic"]
+                    },
+                    {
+                      "ref": "mat10-quad-02",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "Show that the roots of x² − 2(a + b)x + 2(a² + b²) = 0 are imaginary for all real a and b with a ≠ b. Hence solve the equation when a = b = 2.",
+                      "rubric": "4 marks: computes D = 4(a + b)² − 8(a² + b²). 3 marks: simplifies to −4(a − b)², which is negative for a ≠ b. 3 marks: a = b = 2 gives x² − 8x + 16 = 0 → x = 4 (repeated).",
+                      "sampleAnswer": "D = 4(a + b)² − 8(a² + b²) = 4[a² + 2ab + b² − 2a² − 2b²] = 4[−(a² − 2ab + b²)] = −4(a − b)². For real a ≠ b this is strictly negative, so the roots are imaginary. When a = b = 2 the equation becomes x² − 8x + 16 = 0, i.e. (x − 4)² = 0, so x = 4 twice.",
+                      "explanation": "The discriminant collapses to a perfect square with a minus sign — the whole question. Equal roots only when a = b.",
+                      "tags": ["numerical", "quadratic", "proof"]
+                    }
+                  ]
+                },
+                {
+                  "name": "Sum and Product of Roots",
+                  "questions": [
+                    {
+                      "ref": "mat10-quad-03",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "If α and β are the roots of x² − 5x + 6 = 0, find α² + β² and 1/α + 1/β without solving for the roots.",
+                      "rubric": "1 mark: α + β = 5, αβ = 6. 2 marks: α² + β² = (α + β)² − 2αβ = 13. 2 marks: 1/α + 1/β = (α + β)/αβ = 5/6.",
+                      "sampleAnswer": "α + β = −b/a = 5 and αβ = c/a = 6. α² + β² = (α + β)² − 2αβ = 25 − 12 = 13. 1/α + 1/β = (α + β)/(αβ) = 5/6.",
+                      "explanation": "Both expressions are symmetric, so they reduce to the sum and product. 13 and 5/6.",
+                      "tags": ["numerical", "quadratic"]
+                    },
+                    {
+                      "ref": "mat10-quad-04",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "If α and β are the roots of 2x² − 7x + 3 = 0, form the quadratic equation whose roots are α² and β².",
+                      "rubric": "2 marks: α + β = 7/2, αβ = 3/2. 3 marks: α² + β² = 37/4. 2 marks: α²β² = 9/4. 3 marks: equation 4x² − 37x + 9 = 0.",
+                      "sampleAnswer": "α + β = 7/2, αβ = 3/2. Sum of new roots = α² + β² = (7/2)² − 2(3/2) = 49/4 − 3 = 37/4. Product = (αβ)² = 9/4. The equation is x² − (37/4)x + 9/4 = 0, i.e. 4x² − 37x + 9 = 0.",
+                      "explanation": "Build the new equation from the new sum and product, then clear fractions. 4x² − 37x + 9 = 0.",
+                      "tags": ["numerical", "quadratic"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Sequences and Series",
+          "sections": [
+            {
+              "name": "Arithmetic Progression",
+              "concepts": [
+                {
+                  "name": "Sum of n Terms",
+                  "questions": [
+                    {
+                      "ref": "mat10-ap-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "The 3rd term of an AP is 7 and its 7th term is 19. Find the sum of its first 20 terms.",
+                      "rubric": "2 marks: a + 2d = 7 and a + 6d = 19. 1 mark: d = 3, a = 1. 2 marks: S₂₀ = 10(2 + 57) = 590.",
+                      "sampleAnswer": "a + 2d = 7 and a + 6d = 19. Subtracting: 4d = 12 → d = 3, so a = 1. S₂₀ = (20/2)[2(1) + 19(3)] = 10(2 + 57) = 590.",
+                      "explanation": "Two equations, two unknowns, then the standard sum formula. S₂₀ = 590.",
+                      "tags": ["numerical", "progressions"]
+                    },
+                    {
+                      "ref": "mat10-ap-02",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "How many terms of the AP 9, 17, 25, … must be taken to give a sum of 636?",
+                      "rubric": "2 marks: a = 9, d = 8. 3 marks: sets up (n/2)[18 + (n − 1)8] = 636. 3 marks: reduces to 4n² + 5n − 636 = 0. 2 marks: n = 12, rejecting the negative root.",
+                      "sampleAnswer": "a = 9, d = 8. Sₙ = (n/2)[2a + (n − 1)d] = 636 → n[18 + 8n − 8] = 1272 → n(8n + 10) = 1272 → 4n² + 5n − 636 = 0. D = 25 + 10176 = 10201 = 101². n = (−5 + 101)/8 = 12. The negative root is rejected because n must be a positive integer.",
+                      "explanation": "Stating why the second root is discarded is worth marks. n = 12.",
+                      "tags": ["numerical", "progressions"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Geometric Progression",
+              "concepts": [
+                {
+                  "name": "Infinite Geometric Series",
+                  "questions": [
+                    {
+                      "ref": "mat10-gp-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "Find the sum of the infinite series 1 + 2/3 + 4/9 + 8/27 + … and also the sum of its first 5 terms.",
+                      "rubric": "1 mark: identifies a = 1, r = 2/3 with |r| < 1. 2 marks: S∞ = a/(1 − r) = 3. 2 marks: S₅ = 211/81 ≈ 2.605.",
+                      "sampleAnswer": "a = 1, r = 2/3 and |r| < 1 so the infinite sum exists: S∞ = 1/(1 − 2/3) = 3. S₅ = a(1 − r⁵)/(1 − r) = (1 − 32/243)/(1/3) = 3 × 211/243 = 211/81 ≈ 2.605.",
+                      "explanation": "Checking |r| < 1 before using S∞ is part of the answer. S∞ = 3, S₅ ≈ 2.605.",
+                      "tags": ["numerical", "progressions"]
+                    },
+                    {
+                      "ref": "mat10-gp-02",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "The sum of an infinite GP is 15 and the sum of the squares of its terms is 45. Find the first term and the common ratio, and write down the first three terms.",
+                      "rubric": "2 marks: a/(1 − r) = 15. 2 marks: a²/(1 − r²) = 45. 4 marks: eliminates a to get r = 2/3. 2 marks: a = 5, giving 5, 10/3, 20/9.",
+                      "sampleAnswer": "a/(1 − r) = 15 → a = 15(1 − r). The squares form a GP with first term a² and ratio r²: a²/(1 − r²) = 45. Substituting: 225(1 − r)²/[(1 − r)(1 + r)] = 45 → 225(1 − r)/(1 + r) = 45 → 5(1 − r) = 1 + r → 4 = 6r → r = 2/3. Then a = 15(1/3) = 5, and the series is 5 + 10/3 + 20/9 + …",
+                      "explanation": "The squares of a GP form a GP with ratio r². a = 5, r = 2/3.",
+                      "tags": ["numerical", "progressions"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Coordinate Geometry",
+      "chapters": [
+        {
+          "name": "Straight Lines",
+          "sections": [
+            {
+              "name": "Distance and Section Formula",
+              "concepts": [
+                {
+                  "name": "Distance of a Point from a Line",
+                  "questions": [
+                    {
+                      "ref": "mat10-cg-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "Find the perpendicular distance of the point (3, −5) from the line 3x − 4y − 26 = 0.",
+                      "rubric": "2 marks: quotes d = |ax₁ + by₁ + c|/√(a² + b²). 2 marks: numerator |9 + 20 − 26| = 3. 1 mark: d = 3/5 = 0.6 units.",
+                      "sampleAnswer": "d = |3(3) − 4(−5) − 26| / √(3² + 4²) = |9 + 20 − 26|/5 = 3/5 = 0.6 units.",
+                      "explanation": "Sign care on the y-coordinate is the whole difficulty. d = 0.6.",
+                      "tags": ["numerical", "coordinate-geometry"]
+                    },
+                    {
+                      "ref": "mat10-cg-02",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "Find the equations of the lines parallel to 3x − 4y + 7 = 0 and at a distance of 3 units from it. Also find the distance between the lines 3x − 4y + 7 = 0 and 3x − 4y − 13 = 0.",
+                      "rubric": "2 marks: a parallel line has the form 3x − 4y + c = 0. 4 marks: |c − 7|/5 = 3 → c = 22 or c = −8. 2 marks: writes both equations. 2 marks: distance between the given pair = |7 + 13|/5 = 4 units.",
+                      "sampleAnswer": "Parallel lines share the coefficients: 3x − 4y + c = 0. Distance between parallel lines = |c₁ − c₂|/√(a² + b²) = |c − 7|/5 = 3 → c − 7 = ±15 → c = 22 or c = −8. The lines are 3x − 4y + 22 = 0 and 3x − 4y − 8 = 0. For the second part: |7 − (−13)|/5 = 20/5 = 4 units.",
+                      "explanation": "Both signs must be taken. Lines: 3x − 4y + 22 = 0 and 3x − 4y − 8 = 0; distance = 4.",
+                      "tags": ["numerical", "coordinate-geometry"]
+                    },
+                    {
+                      "ref": "mat10-cg-03",
+                      "type": "mcq_single",
+                      "difficulty": "easy",
+                      "marks": 4,
+                      "negativeMarks": 1,
+                      "body": "The distance of the point (0, 0) from the line 4x + 3y − 10 = 0 is",
+                      "options": [
+                        { "id": "a", "text": "1 unit" },
+                        { "id": "b", "text": "2 units" },
+                        { "id": "c", "text": "5 units" },
+                        { "id": "d", "text": "10 units" }
+                      ],
+                      "answer": "b",
+                      "explanation": "d = |−10|/√(16 + 9) = 10/5 = 2 units.",
+                      "tags": ["coordinate-geometry"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

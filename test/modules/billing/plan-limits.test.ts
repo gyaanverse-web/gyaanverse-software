@@ -151,13 +151,36 @@ describe('assertHasFeature', () => {
 })
 
 describe('mocks_per_month limit', () => {
-  it('counts only exams created in the current calendar month', async () => {
-    const { tenant, owner } = await seedTenantWithUsers('free') // 3 mocks/month
+  // The quota counts papers SUBMITTED for review this month, not exams created.
+  // The wizard opens a draft row on the teacher's first click, so counting
+  // creations would bill the coaching for every abandoned attempt.
+  it('counts papers submitted in the current calendar month', async () => {
+    const { tenant, teacher } = await seedTenantWithUsers('free') // 3 mocks/month
     for (let i = 0; i < 3; i++) {
-      await createTestExam({ tenantId: tenant.id, createdBy: owner.id, status: 'draft' })
+      await createTestExam({ tenantId: tenant.id, createdBy: teacher.id, status: 'under_review' })
     }
     await expect(assertWithinLimit(tenant.id, 'mocks_per_month')).rejects.toMatchObject({
       code: 'PLAN_LIMIT_EXCEEDED',
     })
+  })
+
+  it('CRITICAL: unsubmitted drafts do not count against the quota', async () => {
+    const { tenant, teacher } = await seedTenantWithUsers('free')
+    for (let i = 0; i < 10; i++) {
+      await createTestExam({ tenantId: tenant.id, createdBy: teacher.id, status: 'draft' })
+    }
+    await expect(assertWithinLimit(tenant.id, 'mocks_per_month')).resolves.toBeUndefined()
+  })
+
+  it('ignores papers submitted in an earlier month', async () => {
+    const { tenant, teacher } = await seedTenantWithUsers('free')
+    const lastMonth = new Date()
+    lastMonth.setMonth(lastMonth.getMonth() - 1, 15)
+    for (let i = 0; i < 5; i++) {
+      await createTestExam({
+        tenantId: tenant.id, createdBy: teacher.id, status: 'live', submittedAt: lastMonth,
+      })
+    }
+    await expect(assertWithinLimit(tenant.id, 'mocks_per_month')).resolves.toBeUndefined()
   })
 })

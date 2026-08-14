@@ -4,7 +4,7 @@ import { db } from '@shared/db.js'
 import { invites } from '@modules/invite/invite.schema.js'
 import { memberships } from '@modules/membership/membership.schema.js'
 import { users } from '@modules/auth/auth.schema.js'
-import { acceptInvite, revokeInvite } from '@modules/invite/invite.service.js'
+import { acceptInvite, revokeInvite, getInvitePreview } from '@modules/invite/invite.service.js'
 import {
   createTestInvite,
   createTestUser,
@@ -144,6 +144,75 @@ describe('acceptInvite', () => {
     await expect(acceptInvite(teacher.id, invite.token)).rejects.toMatchObject({
       code: 'ALREADY_MEMBER',
     })
+  })
+})
+
+describe('getInvitePreview', () => {
+  it('returns the coaching, role and channel for a pending invite', async () => {
+    const { tenant, owner } = await seedTenantWithUsers()
+    const invite = await createTestInvite({
+      tenantId: tenant.id,
+      invitedBy: owner.id,
+      contact: 'preview@example.com',
+    })
+
+    const p = await getInvitePreview(invite.token)
+    expect(p.state).toBe('pending')
+    expect(p.coachingName).toBe(tenant.name)
+    expect(p.coachingSlug).toBe(tenant.slug)
+    expect(p.role).toBe('teacher')
+    expect(p.contactType).toBe('email')
+    expect(p.expiresAt).toBe(invite.expiresAt.toISOString())
+  })
+
+  it('CRITICAL: never returns the raw contact — a leaked link must not expose it', async () => {
+    const { tenant, owner } = await seedTenantWithUsers()
+    const emailInvite = await createTestInvite({
+      tenantId: tenant.id,
+      invitedBy: owner.id,
+      contact: 'rahul.sharma@example.com',
+    })
+    const phoneInvite = await createTestInvite({
+      tenantId: tenant.id,
+      invitedBy: owner.id,
+      contact: '+919876543210',
+      contactType: 'phone',
+    })
+
+    const e = await getInvitePreview(emailInvite.token)
+    expect(e.contactMasked).not.toBe('rahul.sharma@example.com')
+    expect(e.contactMasked).toMatch(/^ra•+@example\.com$/)
+
+    const s = await getInvitePreview(phoneInvite.token)
+    expect(s.contactMasked).not.toContain('98765')
+    expect(s.contactMasked).toMatch(/^•+3210$/)
+  })
+
+  it('reports accepted, revoked and expired distinctly', async () => {
+    const { tenant, owner } = await seedTenantWithUsers()
+    const mk = (over: Parameters<typeof createTestInvite>[0]) => createTestInvite(over)
+
+    const accepted = await mk({ tenantId: tenant.id, invitedBy: owner.id, contact: 'a@x.com', status: 'accepted' })
+    const revoked = await mk({ tenantId: tenant.id, invitedBy: owner.id, contact: 'r@x.com', status: 'revoked' })
+    const expired = await mk({
+      tenantId: tenant.id,
+      invitedBy: owner.id,
+      contact: 'e@x.com',
+      expiresAt: new Date(Date.now() - 60_000),
+    })
+
+    expect((await getInvitePreview(accepted.token)).state).toBe('accepted')
+    expect((await getInvitePreview(revoked.token)).state).toBe('revoked')
+    expect((await getInvitePreview(expired.token)).state).toBe('expired')
+  })
+
+  it('returns an empty not_found preview for unknown or blank tokens', async () => {
+    for (const token of ['definitely-not-a-token', '']) {
+      const p = await getInvitePreview(token)
+      expect(p.state).toBe('not_found')
+      expect(p.coachingName).toBeNull()
+      expect(p.contactMasked).toBeNull()
+    }
   })
 })
 

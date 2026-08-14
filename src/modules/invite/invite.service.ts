@@ -9,6 +9,7 @@ import { users } from '../auth/auth.schema.js'
 import { tenants } from '../tenant/tenant.schema.js'
 import { assertWithinLimit } from '../billing/billing.service.js'
 import { dispatch } from '@modules/notification/index.js'
+import { appUrl } from '../../shared/urls.js'
 
 const resend = new Resend(env.RESEND_API_KEY)
 
@@ -19,9 +20,54 @@ function generateToken(): string {
 }
 
 function inviteAcceptUrl(token: string): string {
-  const base =
-    env.NODE_ENV !== 'production' ? env.FRONTEND_URL : `https://${env.APP_DOMAIN}`
-  return `${base}/accept-invite?token=${token}`
+  return appUrl(`/accept-invite?token=${token}`)
+}
+
+// Minimal HTML escaping — tenant names are owner-supplied free text and land
+// inside the email body, so they must never be interpolated raw.
+function esc(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function inviteEmailHtml(tenantName: string, url: string): string {
+  const name = esc(tenantName)
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#FBFCFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:14px;padding:40px;border:1px solid #E5E8F0;max-width:600px">
+        <tr><td>
+          <p style="margin:0 0 28px;font-size:20px;font-weight:700;color:#0B1020;letter-spacing:-0.01em">Gyanverse</p>
+          <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#2B50F5;letter-spacing:0.08em;text-transform:uppercase">Teacher invitation</p>
+          <p style="margin:0 0 16px;font-size:24px;font-weight:700;color:#0B1020;line-height:1.3">
+            You've been invited to join ${name}
+          </p>
+          <p style="margin:0 0 8px;font-size:16px;color:#3A4257;line-height:1.6">
+            ${name} has invited you to join their coaching on Gyanverse as a <strong>teacher</strong>.
+            Accept below to set up your account and get access.
+          </p>
+          <p style="margin:28px 0">
+            <a href="${url}" style="background:#2B50F5;color:#fff;padding:14px 28px;border-radius:999px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block">Accept invitation</a>
+          </p>
+          <p style="margin:0 0 4px;font-size:13px;color:#8A93A8">Or paste this link into your browser:</p>
+          <p style="margin:0;font-size:13px;word-break:break-all"><a href="${url}" style="color:#2B50F5">${url}</a></p>
+          <hr style="border:none;border-top:1px solid #E5E8F0;margin:32px 0">
+          <p style="margin:0;font-size:13px;color:#8A93A8;line-height:1.6">
+            This invitation expires in ${INVITE_TTL_HOURS} hours. If you weren't expecting it, you can safely ignore this email.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
 }
 
 async function sendInviteEmail(to: string, tenantName: string, url: string): Promise<void> {
@@ -41,7 +87,7 @@ async function sendInviteEmail(to: string, tenantName: string, url: string): Pro
     from: `Gyanverse <noreply@${env.APP_DOMAIN}>`,
     to,
     subject: `You've been invited to join ${tenantName} on Gyanverse`,
-    html: `<p>You've been invited to join <strong>${tenantName}</strong> as a teacher on Gyanverse.</p><p><a href="${url}">Accept Invitation</a></p><p>This link expires in 48 hours. If you didn't expect this, ignore it.</p>`,
+    html: inviteEmailHtml(tenantName, url),
   })
   if (error) console.error('[Resend] Failed to send invite email:', error)
 }
@@ -127,6 +173,7 @@ export async function createInvite(
           title: `You've been invited to join ${tenant.name}`,
           body: `You have a pending invitation to join ${tenant.name} as a teacher on Gyanverse.`,
           link: url,
+          metadata: { coachingName: tenant.name },
         },
       })
     })
@@ -187,7 +234,7 @@ export async function acceptInvite(userId: string, token: string) {
   }
 
   const [user] = await db
-    .select({ email: users.email, phoneNumber: users.phoneNumber })
+    .select({ name: users.name, email: users.email, phoneNumber: users.phoneNumber })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1)
@@ -229,10 +276,91 @@ export async function acceptInvite(userId: string, token: string) {
     tenantId: invite.tenantId,
     data: {
       title: 'Invite accepted',
-      body: `Your teacher invite for ${tenant?.name ?? 'your coaching'} has been accepted.`,
-      link: `/teachers`,
+      body: `${user.name} accepted your teacher invite for ${tenant?.name ?? 'your coaching'}.`,
+      link: `/coaching/teachers`,
+      metadata: { memberName: user.name },
     },
   })
 
   return { success: true, role: 'teacher', tenant }
+}
+
+// ── Public (unauthenticated) invite preview ─────────────────────────────────
+
+export type InvitePreviewState = 'pending' | 'accepted' | 'revoked' | 'expired' | 'not_found'
+
+export interface InvitePreview {
+  state: InvitePreviewState
+  coachingName: string | null
+  coachingSlug: string | null
+  role: string | null
+  contactType: 'email' | 'phone' | null
+  /** Partially masked so a leaked link doesn't hand over the full address. */
+  contactMasked: string | null
+  expiresAt: string | null
+}
+
+function maskEmail(value: string): string {
+  const [local = '', domain = ''] = value.split('@')
+  const head = local.slice(0, 2)
+  const masked = local.length <= 2 ? `${head}•••` : `${head}${'•'.repeat(Math.min(local.length - 2, 6))}`
+  return domain ? `${masked}@${domain}` : masked
+}
+
+function maskPhone(value: string): string {
+  const tail = value.slice(-4)
+  return `${'•'.repeat(Math.max(value.length - 4, 3))}${tail}`
+}
+
+/**
+ * Resolves an invite token for the accept-invite landing page, which runs before
+ * the invitee has a session. Returns only what the page needs to explain itself
+ * — never the raw contact, the tenant id, or who sent it.
+ */
+export async function getInvitePreview(token: string): Promise<InvitePreview> {
+  const empty: InvitePreview = {
+    state: 'not_found',
+    coachingName: null,
+    coachingSlug: null,
+    role: null,
+    contactType: null,
+    contactMasked: null,
+    expiresAt: null,
+  }
+
+  if (!token) return empty
+
+  const [row] = await db
+    .select({
+      contact: invites.contact,
+      contactType: invites.contactType,
+      role: invites.role,
+      status: invites.status,
+      expiresAt: invites.expiresAt,
+      coachingName: tenants.name,
+      coachingSlug: tenants.slug,
+    })
+    .from(invites)
+    .innerJoin(tenants, eq(tenants.id, invites.tenantId))
+    .where(eq(invites.token, token))
+    .limit(1)
+
+  if (!row) return empty
+
+  const contactType = row.contactType === 'phone' ? 'phone' : 'email'
+  const state: InvitePreviewState =
+    row.status === 'accepted' ? 'accepted'
+      : row.status === 'revoked' ? 'revoked'
+      : new Date() > row.expiresAt ? 'expired'
+      : 'pending'
+
+  return {
+    state,
+    coachingName: row.coachingName,
+    coachingSlug: row.coachingSlug,
+    role: row.role,
+    contactType,
+    contactMasked: contactType === 'email' ? maskEmail(row.contact) : maskPhone(row.contact),
+    expiresAt: row.expiresAt.toISOString(),
+  }
 }

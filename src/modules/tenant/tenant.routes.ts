@@ -87,16 +87,16 @@ export async function tenantRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Tenants'],
         summary: 'Get my coaching',
-        description: 'Returns the coaching institute the authenticated user belongs to.',
+        description: 'Returns the coaching institute the authenticated user belongs to, plus `membershipRole` — the role they hold **in that coaching**. Gate tenant-scoped UI on `membershipRole`, not on the global session role: the two differ for anyone who belongs to more than one coaching.',
         security: AUTH,
       },
       preHandler: [authenticate],
     },
     async (req, reply) => {
       const { id: userId } = req.user!
-      const tenant = await getMyTenant(userId)
-      if (!tenant) throw Errors.NOT_FOUND('Coaching')
-      reply.send({ tenant })
+      const result = await getMyTenant(userId)
+      if (!result) throw Errors.NOT_FOUND('Coaching')
+      reply.send({ tenant: result.tenant, membershipRole: result.membershipRole })
     },
   )
 

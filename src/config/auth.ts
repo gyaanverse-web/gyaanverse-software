@@ -5,6 +5,7 @@ import { db } from '../shared/db.js'
 import { env } from './env.js'
 import { users, sessions, accounts, verifications } from '../modules/auth/auth.schema.js'
 import { sendEmail } from '../modules/notification/channels/email.channel.js'
+import { withFrontendCallback } from '../shared/urls.js'
 
 // In dev, sendEmail() routes to Mailpit (http://localhost:8025 web UI). If
 // Mailpit isn't running the send throws — we log the URL as a fallback so the
@@ -21,7 +22,11 @@ async function sendWithFallback(label: string, to: string, subject: string, html
   }
 }
 
-async function sendVerificationEmail(userEmail: string, url: string): Promise<void> {
+async function sendVerificationEmail(userEmail: string, betterAuthUrl: string): Promise<void> {
+  // The link must hit the API (only it can consume the token), but the page the
+  // user is redirected to afterwards has to be on the frontend — see
+  // withFrontendCallback.
+  const url = withFrontendCallback(betterAuthUrl, '/verify-email')
   await sendWithFallback(
     'EMAIL VERIFICATION',
     userEmail,
@@ -31,7 +36,8 @@ async function sendVerificationEmail(userEmail: string, url: string): Promise<vo
   )
 }
 
-async function sendPasswordResetEmail(userEmail: string, url: string): Promise<void> {
+async function sendPasswordResetEmail(userEmail: string, betterAuthUrl: string): Promise<void> {
+  const url = withFrontendCallback(betterAuthUrl, '/reset-password')
   await sendWithFallback(
     'PASSWORD RESET',
     userEmail,
@@ -67,8 +73,18 @@ const trustedOrigins =
         'http://localhost:8000',
         'http://127.0.0.1:3000',
         'http://127.0.0.1:8000',
+        // The ops panel (Vite, default port 5173). Listed under lvh.me as well as
+        // localhost because that is the host the deployed panel mirrors.
+        'http://admin.lvh.me:5173',
+        'http://localhost:5173',
       ]
-    : [`https://${env.APP_DOMAIN}`, `https://*.${env.APP_DOMAIN}`]
+    : [
+        `https://${env.APP_DOMAIN}`,
+        `https://*.${env.APP_DOMAIN}`,
+        // Covered by the wildcard while the ops panel is at admin.<APP_DOMAIN>;
+        // this is what carries it over to a genuinely separate domain later.
+        ...(env.OPS_ORIGIN ? [env.OPS_ORIGIN] : []),
+      ]
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -122,6 +138,24 @@ export const auth = betterAuth({
         defaultValue: 'student',
         input: false, // server-controlled only
       },
+      // The one role-ish field the client MAY set, because it grants nothing:
+      // every permission is authorised off the `memberships` row by
+      // requireTenantRole, so claiming 'coaching_owner' here buys you exactly
+      // one thing — being sent to /create-coaching instead of /student.
+      //
+      // Whitelisted through `transform.input` rather than an enum `type`:
+      // Better Auth maps an array type to `z.any()` (see dist/db/to-zod), so an
+      // enum would not actually validate. The transform only runs when the key
+      // is present; omitting it falls through to defaultValue.
+      signupIntent: {
+        type: 'string',
+        required: false,
+        defaultValue: 'student',
+        input: true,
+        transform: {
+          input: (value: unknown) => (value === 'coaching_owner' ? 'coaching_owner' : 'student'),
+        },
+      },
       tenantId: {
         type: 'string',
         required: false,
@@ -144,6 +178,10 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: 8,
     requireEmailVerification: true,
+    // A reset is the recovery path for a compromised account, so any session an
+    // attacker still holds must die with the old password. Off by default in
+    // Better Auth.
+    revokeSessionsOnPasswordReset: true,
     sendResetPassword: async (
       { user, url }: { user: { email: string }; url: string; token: string },
       _request?: Request,

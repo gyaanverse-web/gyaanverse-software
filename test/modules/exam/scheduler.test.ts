@@ -10,8 +10,9 @@ import {
 
 // The time-triggered worker sweep (runLifecycleTick) drives the automatic
 // transitions: scheduled→live at scheduledAt, live→under_evaluation at endsAt
-// (force-submitting active sessions), and results_published→completed once no
-// session is still in flight. It queries the DB directly — no Redis needed.
+// (force-submitting active sessions), under_evaluation→ready_to_publish once no
+// session is still in flight, and — for PUBLIC exams only — ready_to_publish→
+// completed. It queries the DB directly — no Redis needed.
 
 const past = (mins: number) => new Date(Date.now() - mins * 60 * 1000)
 const future = (mins: number) => new Date(Date.now() + mins * 60 * 1000)
@@ -71,11 +72,18 @@ describe('runLifecycleTick — live → under_evaluation', () => {
 
     const result = await runLifecycleTick()
     expect(result.ended).toBe(1)
-    expect(await statusOf(exam.id)).toBe('under_evaluation')
 
     // The active session was force-submitted (no longer in_progress).
     const [s] = await db.select({ status: examSessions.status }).from(examSessions).where(eq(examSessions.id, session.id))
     expect(s.status).not.toBe('in_progress')
+
+    // This exam has no subjective questions, so force-submitting graded it
+    // outright — and the SAME tick's next sweep therefore finds nothing pending
+    // and moves it straight on to ready_to_publish. `under_evaluation` is a real
+    // state, but only for exams that actually need the AI evaluator; a purely
+    // objective paper passes through it without ever resting there.
+    expect(await statusOf(exam.id)).toBe('ready_to_publish')
+    expect(result.readyToPublish).toBe(1)
   })
 
   it('leaves a live exam whose window has not closed', async () => {
@@ -90,33 +98,70 @@ describe('runLifecycleTick — live → under_evaluation', () => {
   })
 })
 
-describe('runLifecycleTick — results_published → completed', () => {
-  it('completes a published exam once no session is still in flight', async () => {
+describe('runLifecycleTick — under_evaluation → ready_to_publish', () => {
+  it('promotes an exam once every session is settled', async () => {
     const { tenant, owner, student } = await seedTenantWithUsers()
     const exam = await createTestExam({
-      tenantId: tenant.id, createdBy: owner.id, status: 'results_published',
+      tenantId: tenant.id, createdBy: owner.id, status: 'under_evaluation',
     })
-    // A fully-settled session must not block completion.
     await createTestSession({
       examId: exam.id, studentId: student.id, tenantId: tenant.id, status: 'evaluated',
     })
 
     const result = await runLifecycleTick()
-    expect(result.completed).toBe(1)
-    expect(await statusOf(exam.id)).toBe('completed')
+    expect(result.readyToPublish).toBe(1)
+    expect(await statusOf(exam.id)).toBe('ready_to_publish')
   })
 
-  it('keeps a published exam that still has an in-flight session', async () => {
+  // This is the stall the evaluation-progress panel exists to expose: one
+  // session still with the AI evaluator holds the whole exam back.
+  it('holds an exam that still has a session awaiting evaluation', async () => {
     const { tenant, owner, student } = await seedTenantWithUsers()
     const exam = await createTestExam({
-      tenantId: tenant.id, createdBy: owner.id, status: 'results_published',
+      tenantId: tenant.id, createdBy: owner.id, status: 'under_evaluation',
     })
     await createTestSession({
       examId: exam.id, studentId: student.id, tenantId: tenant.id, status: 'submitted', // awaiting eval
     })
 
     const result = await runLifecycleTick()
+    expect(result.readyToPublish).toBe(0)
+    expect(await statusOf(exam.id)).toBe('under_evaluation')
+  })
+
+  it('promotes an exam nobody attempted (no sessions to wait on)', async () => {
+    const { tenant, owner } = await seedTenantWithUsers()
+    const exam = await createTestExam({
+      tenantId: tenant.id, createdBy: owner.id, status: 'under_evaluation',
+    })
+
+    await runLifecycleTick()
+    expect(await statusOf(exam.id)).toBe('ready_to_publish')
+  })
+})
+
+describe('runLifecycleTick — ready_to_publish → completed (public exams only)', () => {
+  // Private exams wait for a teacher who reviews the reports first. Public
+  // marketplace exams have no such teacher, so the worker publishes them.
+  it('does NOT auto-publish a private exam', async () => {
+    const { tenant, owner } = await seedTenantWithUsers()
+    const exam = await createTestExam({
+      tenantId: tenant.id, createdBy: owner.id, status: 'ready_to_publish', visibility: 'private',
+    })
+
+    const result = await runLifecycleTick()
     expect(result.completed).toBe(0)
-    expect(await statusOf(exam.id)).toBe('results_published')
+    expect(await statusOf(exam.id)).toBe('ready_to_publish')
+  })
+
+  it('auto-publishes a public exam', async () => {
+    const { tenant, owner } = await seedTenantWithUsers('pro')
+    const exam = await createTestExam({
+      tenantId: tenant.id, createdBy: owner.id, status: 'ready_to_publish', visibility: 'public_free',
+    })
+
+    const result = await runLifecycleTick()
+    expect(result.completed).toBe(1)
+    expect(await statusOf(exam.id)).toBe('completed')
   })
 })

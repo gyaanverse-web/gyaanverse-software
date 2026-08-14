@@ -1,6 +1,15 @@
 import type { FastifyDynamicSwaggerOptions } from '@fastify/swagger'
+import { env } from './env.js'
 
-export const swaggerConfig: FastifyDynamicSwaggerOptions = {
+// A function, not a constant: the `servers` block below has to name the host the
+// reader is actually talking to. Hard-coded `http://localhost:8000` meant every
+// "Try it out" button in staging fired at the reader's own machine and failed
+// with a connection error that looks exactly like the API being down.
+//
+// BETTER_AUTH_URL is the API's own public base URL by definition — better-auth
+// builds its callback URLs from it — so it is the one variable that is already
+// guaranteed correct per environment. No new variable needed for this.
+export const swaggerConfig = (): FastifyDynamicSwaggerOptions => ({
   openapi: {
     openapi: '3.0.3',
     info: {
@@ -26,19 +35,28 @@ Routes prefixed with \`/tenant/\` require a tenant context resolved from:
 
 ### Roles
 
-| Role | Who |
+There are two independent role layers. **Tenant roles** are per-coaching and
+live in the \`memberships\` table (checked by \`requireTenantRole\`); the
+**platform role** is a single value on the user account (checked by
+\`requireRole\`). The same person can own one coaching and teach at another, so
+never infer a tenant role from the platform role.
+
+| Tenant role | Who |
 |------|-----|
-| \`coaching_owner\` | Owner of a coaching institute |
+| \`coaching_owner\` | Owner of a coaching institute. The PRD calls this role "Admin" — it approves, schedules and runs exams (see the **Exam Review** tag). |
 | \`teacher\` | Teacher within a coaching |
 | \`student\` | Student enrolled in a coaching |
-| \`super_admin\` | Platform administrator |
+
+| Platform role | Who |
+|------|-----|
+| \`super_admin\` | Gyanverse platform operator, above all coachings. Currently used only for the global question-bank catalog — there is no super-admin portal. |
       `.trim(),
       version: '1.0.0',
     },
     servers: [
       {
-        url: 'http://localhost:8000',
-        description: 'Local development',
+        url: env.BETTER_AUTH_URL,
+        description: env.NODE_ENV === 'production' ? 'This deployment' : 'Local development',
       },
     ],
     components: {
@@ -75,4 +93,4 @@ Routes prefixed with \`/tenant/\` require a tenant context resolved from:
       { name: 'Reports', description: 'Exam and student performance reports' },
     ],
   },
-}
+})

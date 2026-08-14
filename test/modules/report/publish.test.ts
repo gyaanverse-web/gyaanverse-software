@@ -119,8 +119,9 @@ describe('createReportForSession — happy path', () => {
   })
 
   it('does NOT notify for a PRIVATE exam — that fires from the teacher publish step', async () => {
-    // Private (coaching) exams gate results behind results_published; the
-    // report is still computed, but the student is not told here.
+    // Private (coaching) exams gate results behind the teacher's publish (which
+    // takes the exam to `completed`); the report is still computed here, but the
+    // student is not told about it.
     const { dispatch } = await import('@modules/notification/index.js')
     const mockedDispatch = vi.mocked(dispatch)
     mockedDispatch.mockClear()

@@ -119,7 +119,7 @@ export async function confirmPayment(
     data: {
       title: 'Payment confirmed',
       body: `Your payment of ₹${payment.amount} was successful.`,
-      link: `/exams/${orderExamId}`,
+      link: `/student/exams/${orderExamId}/intro`,
     },
   })
 
