@@ -41,13 +41,18 @@ async function countUsage(tenantId: string, limit: keyof PlanLimits): Promise<nu
       return value
     }
     case 'mocks_per_month': {
+      // Counted on SUBMISSION, not creation. A teacher's unsubmitted drafts are
+      // scratch work — the wizard now creates a draft row the moment they start,
+      // so counting `createdAt` would bill the coaching for every abandoned
+      // attempt. The quota is consumed when a paper enters the review pipeline
+      // (`submittedAt`, stamped by the draft→under_review transition).
       const now = new Date()
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
       const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1)
       const [{ value }] = await db
         .select({ value: count() })
         .from(exams)
-        .where(and(eq(exams.tenantId, tenantId), gte(exams.createdAt, monthStart), lt(exams.createdAt, monthEnd)))
+        .where(and(eq(exams.tenantId, tenantId), gte(exams.submittedAt, monthStart), lt(exams.submittedAt, monthEnd)))
       return value
     }
     case 'ai_evaluations': {
@@ -73,11 +78,26 @@ export async function hasFeature(tenantId: string, feature: keyof PlanFeatures):
   return PLANS[name].features[feature]
 }
 
-export async function isWithinLimit(tenantId: string, limit: keyof PlanLimits): Promise<boolean> {
+/**
+ * Usage against a limit without deciding anything about it.
+ *
+ * Callers that must not be blocked by a quota — `ai_evaluations` above all, see
+ * the note in `config/plans.ts` — use this to log or flag an overage and carry
+ * on, rather than `assertWithinLimit`, which aborts the operation.
+ */
+export async function getLimitUsage(
+  tenantId: string,
+  limit: keyof PlanLimits,
+): Promise<{ current: number; max: number; within: boolean }> {
   const name = await resolvePlanName(tenantId)
   const max = PLANS[name].limits[limit]
   const current = await countUsage(tenantId, limit)
-  return current < max
+  return { current, max, within: current < max }
+}
+
+export async function isWithinLimit(tenantId: string, limit: keyof PlanLimits): Promise<boolean> {
+  const { within } = await getLimitUsage(tenantId, limit)
+  return within
 }
 
 export async function assertWithinLimit(tenantId: string, limit: keyof PlanLimits): Promise<void> {

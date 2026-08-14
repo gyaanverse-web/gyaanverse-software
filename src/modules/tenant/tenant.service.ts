@@ -150,13 +150,26 @@ export async function joinAsStudent(userId: string, tenantId: string) {
 
 // ── Get the coaching the current user belongs to ────────────────────────────
 
-export async function getMyTenant(userId: string): Promise<Tenant | null> {
+/**
+ * The coaching the user belongs to, plus **the role they hold in it**.
+ *
+ * `membershipRole` is the authoritative role for anything tenant-scoped. It is
+ * NOT the same as the global `user.role` on the session: someone can own one
+ * coaching (global role `coaching_owner`) while being a `teacher` in another.
+ * Clients must gate tenant UI on this value, mirroring `requireTenantRole` on
+ * the server, or they will show owner-only screens to a non-owner.
+ */
+export async function getMyTenant(
+  userId: string,
+): Promise<{ tenant: Tenant; membershipRole: string } | null> {
   const [row] = await db
-    .select({ tenantId: memberships.tenantId })
+    .select({ tenantId: memberships.tenantId, role: memberships.role })
     .from(memberships)
     .where(eq(memberships.userId, userId))
     .limit(1)
-  return row ? getTenantById(row.tenantId) : null
+  if (!row) return null
+  const tenant = await getTenantById(row.tenantId)
+  return tenant ? { tenant, membershipRole: row.role } : null
 }
 
 // ── List members of a coaching ──────────────────────────────────────────────

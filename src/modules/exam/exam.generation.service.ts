@@ -1,13 +1,13 @@
-import { eq, and, asc, inArray } from 'drizzle-orm'
+import { eq, and, asc, inArray, isNull, isNotNull } from 'drizzle-orm'
 import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
-import { exams, questions } from './exam.schema.js'
-import { assertExamEditor, recomputeTotalMarks } from './exam.service.js'
+import { exams, questions, examClasses } from './exam.schema.js'
+import { assertExamAuthor, recomputeTotalMarks, resolveTenantClasses } from './exam.service.js'
 import { validateQuestionPayload } from './exam.validators.js'
 import {
   validateGenerationParams, buildBuckets, estimateDurationMins,
 } from './exam.generation.js'
-import { assertWithinLimit, assertHasFeature } from '../billing/billing.service.js'
+import { assertHasFeature } from '../billing/billing.service.js'
 import {
   pickQuestionsForGeneration, incrementUsage, resolveHierarchyPath,
   type GenerationScope,
@@ -31,27 +31,57 @@ function deriveScopeType(params: GenerationParams): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Generate a draft exam from a config: pull matching questions from the bank
-// (pure SQL, no LLM), copy them into the exam as `pending` draft questions, and
-// compute the estimated duration from the time matrix. Returns any buckets the
-// bank could not fully fill so the teacher can adjust.
+// Fill an existing draft from the question bank: pull matching questions (pure
+// SQL, no LLM), copy them into the exam as `pending` draft questions, and compute
+// the estimated duration from the time matrix. Returns any buckets the bank could
+// not fully fill so the teacher can adjust.
+//
+// This generates INTO a draft the wizard already created rather than creating an
+// exam of its own — the draft exists from the moment the teacher opens the
+// generator, so their work survives a closed tab (see `startWizardDraft`).
+//
+// Re-running it is how the wizard's Back button works: stepping back to the
+// distribution step, changing the mix and regenerating replaces the previously
+// generated questions. Questions the teacher wrote BY HAND (draftStatus null)
+// are preserved and renumbered after the fresh picks — those were authored, not
+// generated, and silently discarding them would lose real work.
+//
+// `classIds` are linked inside the same transaction. The wizard asks for the
+// class *before* the scope/distribution, so a generated draft is never left
+// classless — a state `submitForReview` would reject anyway.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generateExam(input: {
+export async function generateIntoDraft(input: {
+  examId: string
   tenantId: string
-  createdBy: string
+  requesterId: string
   requesterRole: string
-  title: string
+  title?: string
   visibility?: ExamVisibility
   durationMins?: number
+  classIds?: string[]
   params: GenerationParams
 }) {
-  const { tenantId, createdBy, params } = input
+  const { examId, tenantId, params } = input
 
-  // Plan gating mirrors manual exam creation.
-  await assertWithinLimit(tenantId, 'mocks_per_month')
-  const visibility = input.visibility ?? 'private'
+  // Authoring gate: teacher, and the creator of this draft.
+  const draft = await assertExamAuthor(examId, tenantId, input.requesterId, input.requesterRole)
+  if (draft.status !== 'draft')
+    throw new AppError(
+      'VALIDATION',
+      `Questions can only be generated into a draft (this exam is ${draft.status})`,
+      422,
+    )
+
+  // No monthly-quota check: the quota is charged at submit-for-review, so a
+  // teacher may regenerate a draft as often as they like while tuning the mix.
+  const visibility = input.visibility ?? (draft.visibility as ExamVisibility)
   if (visibility !== 'private') await assertHasFeature(tenantId, 'public_mocks')
+
+  // Resolve + tenant-check the classes before doing any generation work, so a
+  // bad class id fails fast instead of after a costly bank query.
+  const classIds = [...new Set(input.classIds ?? [])]
+  const classRows = classIds.length > 0 ? await resolveTenantClasses(classIds, tenantId) : []
 
   const paramError = validateGenerationParams(params)
   if (paramError) throw new AppError('VALIDATION', paramError, 422)
@@ -113,24 +143,44 @@ export async function generateExam(input: {
     pickedRows.map((r) => ({ type: r.type, difficulty: r.difficulty })),
   )
 
-  const exam = await db.transaction(async (tx) => {
-    const [created] = await tx.insert(exams).values({
-      tenantId,
-      createdBy,
-      title: input.title,
-      durationMins: input.durationMins ?? (estimated || 1),
+  // The class the paper is for carries the grade — inherit it rather than
+  // asking the teacher for the same fact twice. Falls back to null when the
+  // selected classes have no grade or disagree on it.
+  const grades = [...new Set(classRows.map((c) => c.grade).filter((g): g is string => !!g))]
+  const gradeLevel = grades.length === 1 ? grades[0] : null
+
+  await db.transaction(async (tx) => {
+    const patch: Record<string, unknown> = {
+      durationMins: input.durationMins ?? (estimated || draft.durationMins || 1),
       estimatedDurationMins: estimated,
       generationParams: params as unknown as Record<string, unknown>,
       subjectId: params.subjectId ?? null,
+      gradeLevel,
       scopeType: deriveScopeType(params),
       visibility,
-      status: 'draft',
-    }).returning()
+      updatedAt: new Date(),
+    }
+    if (input.title?.trim()) patch.title = input.title.trim()
+    await tx.update(exams).set(patch).where(eq(exams.id, examId))
+
+    // Class links are replaced wholesale — the wizard sends the full selection
+    // from step 1 every time, so this keeps a re-run in sync with what the
+    // teacher currently has ticked.
+    await tx.delete(examClasses).where(eq(examClasses.examId, examId))
+    if (classIds.length > 0) {
+      await tx.insert(examClasses).values(classIds.map((classId) => ({ examId, classId })))
+    }
+
+    // Drop the previous generation run, keeping hand-written questions
+    // (draftStatus null) — see the note above the function.
+    await tx.delete(questions).where(
+      and(eq(questions.examId, examId), isNotNull(questions.draftStatus)),
+    )
 
     if (pickedRows.length > 0) {
       await tx.insert(questions).values(
         pickedRows.map((r, i) => ({
-          examId: created.id,
+          examId,
           tenantId,
           bankQuestionId: r.id,
           order: i + 1,
@@ -147,21 +197,30 @@ export async function generateExam(input: {
           draftStatus: 'pending' as const,
         })),
       )
-      await recomputeTotalMarks(created.id, tx)
     }
 
-    return created
+    // Renumber so the surviving manual questions sit after the fresh picks
+    // instead of colliding with their order values.
+    const manual = await tx.select({ id: questions.id }).from(questions)
+      .where(and(eq(questions.examId, examId), isNull(questions.draftStatus)))
+      .orderBy(asc(questions.order))
+    for (let i = 0; i < manual.length; i++) {
+      await tx.update(questions).set({ order: pickedRows.length + i + 1 })
+        .where(eq(questions.id, manual[i].id))
+    }
+
+    await recomputeTotalMarks(examId, tx)
   })
 
   // Usage analytics — best effort, outside the exam transaction.
   void incrementUsage(pickedRows.map((r) => r.id))
 
   // Re-read the exam so totalMarks reflects the in-transaction recompute.
-  const [fresh] = await db.select().from(exams).where(eq(exams.id, exam.id)).limit(1)
+  const [fresh] = await db.select().from(exams).where(eq(exams.id, examId)).limit(1)
   const draftQuestions = await db.select().from(questions)
-    .where(eq(questions.examId, exam.id)).orderBy(asc(questions.order))
+    .where(eq(questions.examId, examId)).orderBy(asc(questions.order))
 
-  return { exam: fresh ?? exam, questions: draftQuestions, shortages }
+  return { exam: fresh ?? draft, questions: draftQuestions, shortages }
 }
 
 // ── Draft review ──────────────────────────────────────────────────────────────
@@ -182,7 +241,7 @@ function assertDraft(examStatus: string) {
 export async function keepDraftQuestion(
   examId: string, questionId: string, tenantId: string, requesterId: string, requesterRole: string,
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertDraft(exam.status)
   await loadDraftQuestion(examId, questionId)
   const [q] = await db.update(questions)
@@ -194,7 +253,7 @@ export async function keepDraftQuestion(
 export async function discardDraftQuestion(
   examId: string, questionId: string, tenantId: string, requesterId: string, requesterRole: string,
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertDraft(exam.status)
   await loadDraftQuestion(examId, questionId)
   const [q] = await db.update(questions)
@@ -209,7 +268,7 @@ export async function discardDraftQuestion(
 export async function keepAllDraftQuestions(
   examId: string, tenantId: string, requesterId: string, requesterRole: string,
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertDraft(exam.status)
   const updated = await db.update(questions)
     .set({ draftStatus: 'kept', updatedAt: new Date() })
@@ -223,7 +282,7 @@ export async function keepAllDraftQuestions(
 export async function regenerateDraftQuestion(
   examId: string, questionId: string, tenantId: string, requesterId: string, requesterRole: string,
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertDraft(exam.status)
   const old = await loadDraftQuestion(examId, questionId)
   if (!old.difficulty)
@@ -302,7 +361,7 @@ export async function editDraftQuestion(
     explanation?: string | null
   },
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertDraft(exam.status)
   const old = await loadDraftQuestion(examId, questionId)
 
@@ -342,7 +401,7 @@ export async function editDraftQuestion(
 export async function finalizeGeneration(
   examId: string, tenantId: string, requesterId: string, requesterRole: string,
 ) {
-  const exam = await assertExamEditor(examId, tenantId, requesterId, requesterRole)
+  const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertDraft(exam.status)
 
   const finalized = await db.transaction(async (tx) => {

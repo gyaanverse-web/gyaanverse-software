@@ -4,7 +4,6 @@ export {
   getJobStatus,
   getJobForTenant,
   getSessionEvaluation,
-  retryJob,
   indexSyllabus,
   getEvaluationQueue,
 } from './evaluation.service.js'

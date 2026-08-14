@@ -1,0 +1,362 @@
+{
+  "id": "physics-11-mechanics",
+  "label": "Physics 11 — Mechanics & Pressure",
+  "description": "Subjective numericals across the full 5-level hierarchy. Two questions are matched to real handwritten answer sheets, so the AI evaluation on them is a genuine reading rather than noise.",
+  "subject": { "name": "Physics", "gradeLevel": "11", "code": "PHY11" },
+  "modules": [
+    {
+      "name": "Mechanics",
+      "chapters": [
+        {
+          "name": "Motion in a Straight Line",
+          "sections": [
+            {
+              "name": "Uniformly Accelerated Motion",
+              "concepts": [
+                {
+                  "name": "Equations of Motion",
+                  "questions": [
+                    {
+                      "ref": "phy11-kin-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "A car starts from rest and accelerates uniformly over a time of 5.21 seconds for a distance of 110 m. Determine the acceleration of the car.",
+                      "rubric": "1 mark: writes s = ut + ½at². 1 mark: substitutes u = 0. 2 marks: correct rearrangement a = 2s/t². 1 mark: correct value 8.10 m/s² with unit.",
+                      "sampleAnswer": "u = 0, s = 110 m, t = 5.21 s. Using s = ut + ½at² with u = 0: 110 = ½ × a × (5.21)². So a = 2 × 110 / 27.1441 = 8.10 m/s².",
+                      "explanation": "a = 2s/t² = 220 / 27.1441 ≈ 8.10 m/s².",
+                      "tags": ["numerical", "kinematics", "matched-answer-sheet"],
+                      "answerSheets": [
+                        { "file": "test_image1.jpeg", "quality": "correct", "note": "Full correct solution, boxed a = 8.10." },
+                        { "file": "test_image2.jpeg", "quality": "correct", "note": "Same question, second student, correct." },
+                        { "file": "testImage5.jpeg", "quality": "wrong", "note": "Rearranges v² = u² + 2as and answers a = 10 — correct method, but not this question's data. Verified: the engine scores it 0/5." },
+                        { "file": "testImage3.jpeg", "quality": "wrong", "note": "Lists formulas then asserts v = 50 + 75 = 125. Incoherent." }
+                      ]
+                    },
+                    {
+                      "ref": "phy11-kin-02",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "A car accelerates uniformly from 18 km/h to 72 km/h in 10 s. Find (a) its acceleration and (b) the distance it covers in that time.",
+                      "rubric": "1 mark: converts both speeds to m/s (5 m/s and 20 m/s). 2 marks: a = (v − u)/t = 1.5 m/s². 2 marks: s = (u + v)t/2 = 125 m.",
+                      "sampleAnswer": "u = 18 km/h = 5 m/s, v = 72 km/h = 20 m/s, t = 10 s. a = (20 − 5)/10 = 1.5 m/s². s = (u + v)t/2 = (25/2) × 10 = 125 m.",
+                      "explanation": "Unit conversion first (÷ 3.6), then the two standard relations. a = 1.5 m/s², s = 125 m.",
+                      "tags": ["numerical", "kinematics"]
+                    },
+                    {
+                      "ref": "phy11-kin-03",
+                      "type": "subjective",
+                      "difficulty": "easy",
+                      "marks": 5,
+                      "body": "A body starts from rest and covers 40 m in 4 s with uniform acceleration. Find its acceleration and its velocity at the end of 4 s.",
+                      "rubric": "2 marks: s = ½at² → a = 5 m/s². 2 marks: v = at = 20 m/s. 1 mark: units on both answers.",
+                      "sampleAnswer": "u = 0, s = 40 m, t = 4 s. 40 = ½ × a × 16 → a = 5 m/s². v = u + at = 0 + 5 × 4 = 20 m/s.",
+                      "explanation": "a = 2s/t² = 80/16 = 5 m/s²; v = at = 20 m/s.",
+                      "tags": ["numerical", "kinematics"]
+                    },
+                    {
+                      "ref": "phy11-kin-04",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "A train moving at 20 m/s applies its brakes, producing a uniform retardation of 2 m/s². Find (a) the distance it travels before stopping and (b) the distance it covers during the 5th second of braking.",
+                      "rubric": "3 marks: v² = u² + 2as with v = 0 → s = 100 m. 2 marks: checks the train is still moving in the 5th second (stops at t = 10 s). 4 marks: sₙ = u + a(2n − 1)/2 = 11 m. 1 mark: units.",
+                      "sampleAnswer": "u = 20 m/s, a = −2 m/s². (a) 0 = 400 − 4s → s = 100 m. (b) The train stops at t = u/|a| = 10 s, so the 5th second is a real interval. s₅ = u + a(2n − 1)/2 = 20 + (−2)(9)/2 = 20 − 9 = 11 m.",
+                      "explanation": "Stopping distance 100 m. Distance in the nth second uses sₙ = u + a(2n − 1)/2, giving 11 m — not to be confused with distance in 5 s.",
+                      "tags": ["numerical", "kinematics"]
+                    },
+                    {
+                      "ref": "phy11-kin-05",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "Starting from the equation v² = u² + 2as, obtain an expression for the acceleration a. Hence find a for a body whose velocity changes from 0 to 20 m/s over a distance of 20 m.",
+                      "rubric": "3 marks: correct rearrangement a = (v² − u²)/2s. 2 marks: substitution giving a = 10 m/s² with unit.",
+                      "sampleAnswer": "v² = u² + 2as → v² − u² = 2as → a = (v² − u²)/(2s). With u = 0, v = 20 m/s, s = 20 m: a = 400/40 = 10 m/s².",
+                      "explanation": "Pure rearrangement followed by one substitution. a = 10 m/s².",
+                      "tags": ["numerical", "kinematics", "derivation", "matched-answer-sheet"],
+                      "answerSheets": [
+                        { "file": "testImage5.jpeg", "quality": "correct", "note": "Rearranges to a = (v² − u²)/2s and states a = 10." }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "Motion Under Gravity",
+                  "questions": [
+                    {
+                      "ref": "phy11-grav-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "A ball thrown vertically upward returns to the thrower's hand after 6 s. Taking g = 10 m/s², find (a) the speed with which it was thrown and (b) the maximum height it reached.",
+                      "rubric": "2 marks: time of ascent = 3 s. 2 marks: u = gt = 30 m/s. 1 mark: h = u²/2g = 45 m.",
+                      "sampleAnswer": "Total time 6 s, so time to the top = 3 s. At the top v = 0: 0 = u − g(3) → u = 30 m/s. h = u²/2g = 900/20 = 45 m.",
+                      "explanation": "Symmetry of projectile motion: ascent time equals descent time. u = 30 m/s, h = 45 m.",
+                      "tags": ["numerical", "gravity"]
+                    },
+                    {
+                      "ref": "phy11-grav-02",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "A stone is dropped from the top of a tower. It crosses the last 20 m before hitting the ground in 1 s. Taking g = 10 m/s², find the height of the tower.",
+                      "rubric": "3 marks: sets up ½gT² − ½g(T − 1)² = 20. 4 marks: solves to T = 2.5 s. 3 marks: H = ½gT² = 31.25 m.",
+                      "sampleAnswer": "Let T be the total fall time. Distance in the last second = ½gT² − ½g(T − 1)² = 20. So 5[T² − (T − 1)²] = 20 → 5(2T − 1) = 20 → 2T − 1 = 4 → T = 2.5 s. H = ½ × 10 × 6.25 = 31.25 m.",
+                      "explanation": "The difference of two 'distance fallen' expressions, not a fresh u = 0 fall over the last 20 m. H = 31.25 m.",
+                      "tags": ["numerical", "gravity"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Relative Velocity",
+              "concepts": [
+                {
+                  "name": "Relative Velocity in One Dimension",
+                  "questions": [
+                    {
+                      "ref": "phy11-rel-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "Two trains, 120 m and 80 m long, move on parallel tracks in opposite directions at 20 m/s and 30 m/s. How long do they take to cross each other completely?",
+                      "rubric": "2 marks: relative speed = 50 m/s for opposite directions. 2 marks: relative displacement = 200 m (sum of lengths). 1 mark: t = 4 s.",
+                      "sampleAnswer": "Opposite directions, so v_rel = 20 + 30 = 50 m/s. To cross completely the relative displacement is 120 + 80 = 200 m. t = 200/50 = 4 s.",
+                      "explanation": "Adding speeds (opposite motion) and lengths (full crossing) are the two marks worth checking. t = 4 s.",
+                      "tags": ["numerical", "relative-motion"]
+                    }
+                  ]
+                },
+                {
+                  "name": "Relative Velocity in a Plane",
+                  "questions": [
+                    {
+                      "ref": "phy11-rel-02",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "Rain is falling vertically with a constant speed. A man walking at 10 km/h finds the rain meeting him at 45° to the vertical. Find the speed of the rain and the speed of the rain relative to the man.",
+                      "rubric": "3 marks: draws/states v_rain,man = v_rain − v_man. 4 marks: tan 45° = v_man/v_rain → v_rain = 10 km/h. 3 marks: relative speed = 10√2 ≈ 14.1 km/h.",
+                      "sampleAnswer": "In the man's frame the rain has a horizontal component equal and opposite to his own velocity. tan 45° = v_man/v_rain → 1 = 10/v_rain → v_rain = 10 km/h. Relative speed = √(10² + 10²) = 10√2 ≈ 14.1 km/h.",
+                      "explanation": "The apparent tilt comes entirely from the observer's own velocity. v_rain = 10 km/h, v_rel = 14.1 km/h.",
+                      "tags": ["numerical", "relative-motion"]
+                    },
+                    {
+                      "ref": "phy11-rel-03",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "A boat can row at 5 m/s in still water. A river 100 m wide flows at 3 m/s. If the boatman wants to cross by the shortest path, in what direction must he head, and how long does the crossing take?",
+                      "rubric": "2 marks: heads upstream at angle θ with sin θ = 3/5, i.e. 37° to the normal. 2 marks: effective across-stream speed = √(25 − 9) = 4 m/s. 1 mark: t = 25 s.",
+                      "sampleAnswer": "For zero drift the upstream component must cancel the current: 5 sin θ = 3 → θ = 37° upstream of the line straight across. Across-stream speed = 5 cos θ = 4 m/s. t = 100/4 = 25 s.",
+                      "explanation": "Shortest path means zero drift, not minimum time. t = 25 s heading 37° upstream.",
+                      "tags": ["numerical", "relative-motion"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Laws of Motion",
+          "sections": [
+            {
+              "name": "Newton's Laws",
+              "concepts": [
+                {
+                  "name": "Free-Body Diagrams",
+                  "questions": [
+                    {
+                      "ref": "phy11-nlm-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "Two blocks of masses 4 kg and 6 kg are in contact on a frictionless horizontal surface. A force of 20 N is applied horizontally to the 4 kg block. Find the acceleration of the system and the contact force between the blocks.",
+                      "rubric": "2 marks: a = F/(m₁ + m₂) = 2 m/s². 2 marks: free-body diagram of the 6 kg block. 1 mark: contact force = 6a = 12 N.",
+                      "sampleAnswer": "a = 20/(4 + 6) = 2 m/s². For the 6 kg block the only horizontal force is the contact force N: N = 6 × 2 = 12 N.",
+                      "explanation": "System first for a, then isolate one block for the internal force. a = 2 m/s², N = 12 N.",
+                      "tags": ["numerical", "newtons-laws"]
+                    },
+                    {
+                      "ref": "phy11-nlm-02",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "Masses of 5 kg and 3 kg hang from the two ends of a light inextensible string passing over a frictionless pulley. Taking g = 10 m/s², find (a) the acceleration of the masses, (b) the tension in the string and (c) the force on the pulley.",
+                      "rubric": "3 marks: two equations of motion, one per mass. 3 marks: a = (m₁ − m₂)g/(m₁ + m₂) = 2.5 m/s². 3 marks: T = 2m₁m₂g/(m₁ + m₂) = 37.5 N. 1 mark: pulley force = 2T = 75 N.",
+                      "sampleAnswer": "For the 5 kg mass: 5g − T = 5a. For the 3 kg mass: T − 3g = 3a. Adding: 2g = 8a → a = 2.5 m/s². T = 3(g + a) = 3 × 12.5 = 37.5 N. Both string segments pull down on the pulley, so the force on it is 2T = 75 N.",
+                      "explanation": "Standard Atwood machine. a = 2.5 m/s², T = 37.5 N, pulley force 75 N (not 8g).",
+                      "tags": ["numerical", "newtons-laws"]
+                    },
+                    {
+                      "ref": "phy11-nlm-03",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "A man of mass 60 kg stands on a weighing machine inside a lift. Taking g = 10 m/s², find the reading of the machine (in newtons) when the lift accelerates upward at 2 m/s², and state what it would read if the cable snapped.",
+                      "rubric": "3 marks: N − mg = ma → N = m(g + a) = 720 N. 2 marks: free fall gives a = −g, so N = 0.",
+                      "sampleAnswer": "Upward acceleration: N − mg = ma → N = 60(10 + 2) = 720 N. In free fall a = g downward, so N = m(g − g) = 0 — the man is weightless.",
+                      "explanation": "Apparent weight is the normal reaction, not mg. 720 N, then 0 N.",
+                      "tags": ["numerical", "newtons-laws"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Friction",
+              "concepts": [
+                {
+                  "name": "Static and Kinetic Friction",
+                  "questions": [
+                    {
+                      "ref": "phy11-fri-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "A 10 kg block rests on a horizontal surface with μs = 0.4 and μk = 0.3. A horizontal force of 30 N is applied. Taking g = 10 m/s², does the block move? Find the frictional force acting on it and its acceleration.",
+                      "rubric": "2 marks: limiting static friction = μsN = 40 N. 2 marks: 30 N < 40 N so the block stays at rest. 1 mark: friction = 30 N (self-adjusting), a = 0.",
+                      "sampleAnswer": "N = mg = 100 N. Limiting static friction = 0.4 × 100 = 40 N. The applied 30 N is less than this, so the block does not move. Static friction adjusts to exactly 30 N and a = 0. (μk is a distractor — it only applies once sliding starts.)",
+                      "explanation": "The common error is using μk immediately and reporting a non-zero acceleration. f = 30 N, a = 0.",
+                      "tags": ["numerical", "friction"]
+                    },
+                    {
+                      "ref": "phy11-fri-02",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "A 5 kg block slides down a rough incline of 30° with μk = 0.2. Taking g = 10 m/s², find its acceleration and its speed after sliding 10 m from rest.",
+                      "rubric": "3 marks: resolves along and normal to the incline. 4 marks: a = g(sin θ − μ cos θ) = 3.27 m/s². 3 marks: v = √(2as) ≈ 8.1 m/s.",
+                      "sampleAnswer": "Along the incline: mg sin θ − μmg cos θ = ma → a = g(sin 30° − 0.2 cos 30°) = 10(0.5 − 0.1732) = 3.27 m/s². From rest over 10 m: v = √(2 × 3.27 × 10) = √65.4 ≈ 8.1 m/s.",
+                      "explanation": "Mass cancels out of the acceleration. a ≈ 3.27 m/s², v ≈ 8.1 m/s.",
+                      "tags": ["numerical", "friction"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Work, Energy and Power",
+          "sections": [
+            {
+              "name": "Work-Energy Theorem",
+              "concepts": [
+                {
+                  "name": "Work Done by a Variable Force",
+                  "questions": [
+                    {
+                      "ref": "phy11-wep-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "A force F = 3x² N acts on a body along the x-axis. Find the work done in moving the body from x = 0 to x = 2 m.",
+                      "rubric": "2 marks: writes W = ∫F dx. 2 marks: evaluates ∫₀² 3x² dx = [x³]₀². 1 mark: W = 8 J with unit.",
+                      "sampleAnswer": "W = ∫₀² F dx = ∫₀² 3x² dx = [x³]₀² = 8 − 0 = 8 J.",
+                      "explanation": "A variable force needs the integral, not F × d. W = 8 J.",
+                      "tags": ["numerical", "work-energy"]
+                    },
+                    {
+                      "ref": "phy11-wep-02",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "A 2 kg block moving at 10 m/s on a rough horizontal surface comes to rest after travelling 25 m. Taking g = 10 m/s², find the work done by friction, the frictional force and the coefficient of kinetic friction.",
+                      "rubric": "3 marks: work-energy theorem W = ΔKE = −100 J. 3 marks: f = |W|/s = 4 N. 3 marks: μ = f/mg = 0.2. 1 mark: sign of the work is negative.",
+                      "sampleAnswer": "Initial KE = ½ × 2 × 100 = 100 J, final KE = 0. By the work-energy theorem the work done by friction = −100 J. Since W = −f·s, f = 100/25 = 4 N. μk = f/mg = 4/(2 × 10) = 0.2.",
+                      "explanation": "Friction's work is negative; the magnitude gives f and hence μ. W = −100 J, f = 4 N, μ = 0.2.",
+                      "tags": ["numerical", "work-energy"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Conservation of Energy",
+              "concepts": [
+                {
+                  "name": "Conservation of Mechanical Energy",
+                  "questions": [
+                    {
+                      "ref": "phy11-cons-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "A pendulum bob of mass 0.5 kg on a string of length 1 m is released from the horizontal position. Taking g = 10 m/s², find its speed at the lowest point and the tension in the string there.",
+                      "rubric": "2 marks: energy conservation ½mv² = mgL → v = √(2gL) ≈ 4.47 m/s. 3 marks: T − mg = mv²/L → T = 15 N.",
+                      "sampleAnswer": "Energy: ½mv² = mgL → v = √(2 × 10 × 1) = √20 ≈ 4.47 m/s. At the lowest point the net upward force is centripetal: T − mg = mv²/L → T = 0.5 × 10 + 0.5 × 20/1 = 5 + 10 = 15 N.",
+                      "explanation": "Tension at the bottom is 3mg for a bob released from the horizontal. v ≈ 4.47 m/s, T = 15 N.",
+                      "tags": ["numerical", "energy"]
+                    },
+                    {
+                      "ref": "phy11-cons-02",
+                      "type": "subjective",
+                      "difficulty": "hard",
+                      "marks": 10,
+                      "body": "A 2 kg block slides from rest down a smooth track of height 5 m and then compresses a spring of force constant 200 N/m on a smooth horizontal floor. Taking g = 10 m/s², find the maximum compression of the spring.",
+                      "rubric": "3 marks: PE at the top = mgh = 100 J. 3 marks: all of it converts to spring PE, ½kx². 3 marks: x = 1 m. 1 mark: states the track is smooth so no energy is lost.",
+                      "sampleAnswer": "mgh = 2 × 10 × 5 = 100 J. Everything is smooth, so at maximum compression all of it is stored in the spring: ½kx² = 100 → ½ × 200 × x² = 100 → x² = 1 → x = 1 m.",
+                      "explanation": "At maximum compression the block is momentarily at rest, so KE = 0. x = 1 m.",
+                      "tags": ["numerical", "energy"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pressure and Fluids",
+      "chapters": [
+        {
+          "name": "Thrust and Pressure",
+          "sections": [
+            {
+              "name": "Pressure on Solid Surfaces",
+              "concepts": [
+                {
+                  "name": "Pressure Exerted by a Body",
+                  "questions": [
+                    {
+                      "ref": "phy11-pre-01",
+                      "type": "subjective",
+                      "difficulty": "medium",
+                      "marks": 5,
+                      "body": "A 50 kg girl wearing high heel shoes balances on a single heel. The heel is circular with a diameter of 1.0 cm. What is the pressure exerted by the heel on the horizontal floor? (Take g = 9.8 m/s²)",
+                      "rubric": "1 mark: radius = 0.005 m. 1 mark: area = πr² = 7.85 × 10⁻⁵ m². 1 mark: thrust = mg = 490 N. 2 marks: P = F/A = 6.24 × 10⁶ N/m².",
+                      "sampleAnswer": "r = d/2 = 0.5 cm = 0.005 m. A = πr² = π(0.005)² = 7.85 × 10⁻⁵ m². F = mg = 50 × 9.8 = 490 N. P = F/A = 490 / (7.85 × 10⁻⁵) = 6.24 × 10⁶ N/m².",
+                      "explanation": "Converting the diameter to a radius in metres is where most marks are lost. P = 6.24 × 10⁶ Pa.",
+                      "tags": ["numerical", "pressure", "matched-answer-sheet"],
+                      "answerSheets": [
+                        { "file": "testImage7.jpeg", "quality": "correct", "note": "Complete correct solution ending at 6.24 × 10⁶ N/m²." },
+                        { "file": "testImage8.jpeg", "quality": "partial", "note": "Right numbers throughout, but the final line writes P = force × area instead of force/area." }
+                      ]
+                    },
+                    {
+                      "ref": "phy11-pre-02",
+                      "type": "subjective",
+                      "difficulty": "easy",
+                      "marks": 5,
+                      "body": "A rectangular block of mass 40 kg has a base measuring 50 cm × 20 cm. Taking g = 10 m/s², find the pressure it exerts when resting on that base, and state what happens to the pressure if it is stood on a face of half that area.",
+                      "rubric": "2 marks: area = 0.1 m². 2 marks: P = 400/0.1 = 4000 Pa. 1 mark: halving the area doubles the pressure to 8000 Pa.",
+                      "sampleAnswer": "A = 0.5 × 0.2 = 0.1 m². F = mg = 400 N. P = 400/0.1 = 4000 Pa. Pressure is inversely proportional to area, so on half the area it doubles to 8000 Pa.",
+                      "explanation": "Same thrust, smaller area, larger pressure. 4000 Pa, then 8000 Pa.",
+                      "tags": ["numerical", "pressure"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

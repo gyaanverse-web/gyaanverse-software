@@ -39,10 +39,22 @@ export const exams = pgTable('exams', {
   maxAttempts: integer('max_attempts').notNull().default(1),
   // Teacher→admin approval / scheduling / live / evaluation lifecycle (PRD v1).
   // 'draft' | 'under_review' | 'changes_requested' | 'rejected' | 'approved'
-  // | 'scheduled' | 'live' | 'under_evaluation' | 'results_published'
+  // | 'scheduled' | 'live' | 'under_evaluation' | 'ready_to_publish'
   // | 'completed' | 'archived'  (see ExamStatus in exam.types.ts)
   status: varchar('status', { length: 20 }).notNull().default('draft'),
   totalMarks: integer('total_marks').notNull().default(0),
+  // ── Resumable authoring wizard (test engine) ─────────────────────────────
+  // The teacher's draft is created the moment they open the generator, and the
+  // wizard writes its progress back here on every step. Closing the tab and
+  // returning tomorrow resumes exactly where they left off.
+  //   wizardStep  — 1-based step last reached (1 Class & Subject … 4 Review).
+  //                 Null for exams never authored through the wizard.
+  //   wizardState — the raw form state for those steps (see WizardState in
+  //                 exam.types.ts). Deliberately a loose jsonb blob: it is UI
+  //                 scratch state, and `generationParams` remains the canonical
+  //                 record of what the paper was actually generated from.
+  wizardStep: integer('wizard_step'),
+  wizardState: jsonb('wizard_state').$type<Record<string, unknown>>(),
   // Optional quality/coverage score for the Test Overview. Null until computed.
   qualityScore: integer('quality_score'),
   publishedAt: timestamp('published_at', { withTimezone: true }),
@@ -56,9 +68,9 @@ export const exams = pgTable('exams', {
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   // Remarks attached to the last review decision (changes_requested / rejected).
   reviewRemarks: text('review_remarks'),
-  // Teacher published results (under_evaluation → results_published).
+  // Both stamped together at the publish click (ready_to_publish → completed),
+  // since publishing is what finishes the lifecycle.
   resultsPublishedAt: timestamp('results_published_at', { withTimezone: true }),
-  // Lifecycle finished (results_published → completed).
   completedAt: timestamp('completed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

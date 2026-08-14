@@ -2,6 +2,7 @@ export {
   getPlan,
   hasFeature,
   isWithinLimit,
+  getLimitUsage,
   assertWithinLimit,
   assertHasFeature,
   getEntitlements,

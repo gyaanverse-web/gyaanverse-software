@@ -6,6 +6,16 @@
 import * as dotenv from 'dotenv'
 import { vi, beforeAll, beforeEach } from 'vitest'
 
+// Force, not default. This machine carries a user-level NODE_ENV=production
+// (see scripts/dev-guard.ts for the same problem in the seeding tools), and it
+// wins over both dotenv and the `??=` defaults below — so the whole suite used
+// to die on import at `Missing required env var: MSG91_AUTH_KEY`, a var that is
+// only required in production and that no test touches.
+//
+// There is no reading of "run the test suite" under which the answer is
+// anything but `test`, so this one is set outright rather than defaulted.
+process.env.NODE_ENV = 'test'
+
 // Load .env.test if it exists, then fall back to .env so DEV secrets fill the gaps.
 dotenv.config({ path: '.env.test' })
 dotenv.config()
@@ -43,7 +53,6 @@ const envDefaults: Record<string, string> = {
   CLOUDINARY_CLOUD_NAME: 'test',
   CLOUDINARY_API_KEY: 'test',
   CLOUDINARY_API_SECRET: 'test',
-  NODE_ENV: 'test',
 }
 for (const [key, value] of Object.entries(envDefaults)) {
   process.env[key] ??= value
@@ -83,17 +92,30 @@ vi.mock('../../notification/notification.service.js', () => ({
 }))
 
 // Stub the evaluation queue so enqueueing doesn't actually open a Redis socket.
+//
+// `getJobs` returns [] by default, which for the reconciler means "the queue has
+// forgotten everything" — the orphan case. That is the right default for a suite
+// with no Redis: tests that care about a live queue entry override this mock
+// themselves (see test/modules/evaluation/reconciler.test.ts), and tests that
+// don't care are unaffected because nothing else reads it.
 vi.mock('bullmq', () => {
   class Queue {
     constructor(public name: string) {}
     add = vi.fn().mockResolvedValue({ id: 'mock-job-id' })
+    getJobs = vi.fn().mockResolvedValue([])
+    getJobCounts = vi.fn().mockResolvedValue({})
+    // Read by `getReconcilerScheduleHealth`. Empty = "nothing is scheduled",
+    // which is the state Phase 9 found after a Redis flush; tests that care
+    // override it.
+    getJobSchedulers = vi.fn().mockResolvedValue([])
   }
   class Worker {
     constructor(public name: string) {}
     on() {}
     close() {}
   }
-  return { Queue, Worker }
+  class UnrecoverableError extends Error {}
+  return { Queue, Worker, UnrecoverableError }
 })
 
 // ioredis is constructed in service.ts even if we never use it — stub it out.

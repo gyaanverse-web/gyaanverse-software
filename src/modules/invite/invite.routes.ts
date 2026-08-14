@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { Errors } from '../../shared/errors.js'
 import { authenticate, requireTenantRole } from '../../middleware/auth.middleware.js'
 import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
-import { createInvite, listInvites, revokeInvite, acceptInvite } from './invite.service.js'
+import { createInvite, listInvites, revokeInvite, acceptInvite, getInvitePreview } from './invite.service.js'
 
 const createInviteSchema = z
   .object({
@@ -106,6 +106,30 @@ export async function inviteRoutes(app: FastifyInstance) {
       const tenant = req.tenant!
       const result = await revokeInvite(tenant.id, id)
       reply.send(result)
+    },
+  )
+
+  // GET /invites/:token — public preview so the accept-invite landing page can
+  // name the coaching and pick the right sign-in path before a session exists.
+  // Returns 200 with state:"not_found" rather than 404 so the page renders one
+  // consistent explanatory screen for every bad-token case.
+  app.get(
+    '/invites/:token',
+    {
+      schema: {
+        tags: ['Invites'],
+        summary: 'Preview an invite by token (public)',
+        description: 'Unauthenticated lookup used by the accept-invite page. Returns the coaching name, role, contact channel and a masked contact, plus the invite state (`pending` | `accepted` | `revoked` | `expired` | `not_found`). Never returns the raw contact or tenant id.',
+        params: {
+          type: 'object',
+          required: ['token'],
+          properties: { token: { type: 'string' } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { token } = req.params as { token: string }
+      reply.send(await getInvitePreview(token))
     },
   )
 

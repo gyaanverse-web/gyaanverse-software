@@ -10,6 +10,23 @@ export interface PlanFeatures {
 export interface PlanLimits {
   students: number
   mocks_per_month: number
+  /**
+   * REPORT-ONLY. Never blocks. (Decision, 2026-08-12.)
+   *
+   * Every other limit here gates an action a human is taking and can react to:
+   * a teacher hits the mock cap while creating a paper and gets told so. An
+   * `ai_evaluations` overage would instead be discovered by `enqueueEvaluation`
+   * *after* a student has already submitted, and refusing there means the paper
+   * is never graded, the session never settles, and the exam never leaves
+   * `under_evaluation` — the whole cohort's results held hostage by a billing
+   * counter. That is strictly worse than grading over the cap.
+   *
+   * So `enqueueEvaluation` reads usage via `getLimitUsage` and logs the overage
+   * rather than calling `assertWithinLimit`. The number below stays meaningful
+   * as a plan-page figure and in `getUsageSummary`; enforcement, when it comes,
+   * belongs at the billing layer (overage invoice, upgrade prompt), not in the
+   * grading path.
+   */
   ai_evaluations: number
   teachers: number
   classes: number
