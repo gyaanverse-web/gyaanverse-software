@@ -33,5 +33,12 @@ declare module 'fastify' {
      * authorization decision.
      */
     tenantRole?: Role
+    /**
+     * When the current session was created (sign-in time), set by `authenticate`.
+     *
+     * Only `/internal/*` reads it, to enforce a session-age cap much shorter than
+     * the global session lifetime — see `middleware/internal.ts`.
+     */
+    sessionCreatedAt?: Date
   }
 }

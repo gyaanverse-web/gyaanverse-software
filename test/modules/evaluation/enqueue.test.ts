@@ -38,10 +38,17 @@ describe('enqueueEvaluation', () => {
     expect(result).toBeNull()
   })
 
-  it('CRITICAL: soft-fails (returns null) when AI quota is exhausted', async () => {
-    // The submit flow must NEVER throw post-write. enqueueEvaluation is called
-    // after the session is already saved; a thrown error there would cause
-    // the user to see a 500 even though their submission succeeded.
+  it('CRITICAL: still evaluates when the AI quota is exhausted', async () => {
+    // Two guarantees at once.
+    //
+    // The submit flow must NEVER throw post-write: enqueueEvaluation runs after
+    // the session is already saved, so a thrown error would show the student a
+    // 500 on a submission that actually succeeded.
+    //
+    // And it must never skip either — the old behaviour returned null and left
+    // no job row anywhere, so the session sat `submitted` forever and held the
+    // whole exam out of `ready_to_publish` with nothing for anyone to retry
+    // (stall path #2). Quota is metered here, not enforced; see plans.ts.
     const { tenant, owner, student } = await seedTenantWithUsers('free')
     const exam = await createTestExam({ tenantId: tenant.id, createdBy: owner.id })
 
@@ -64,14 +71,14 @@ describe('enqueueEvaluation', () => {
     })
 
     const result = await enqueueEvaluation(overflowSession.id)
-    expect(result).toBeNull() // soft-fail, no throw
+    expect(result).not.toBeNull() // no throw, and no skip
 
-    // No new job row was created
     const jobsForOverflow = await db
       .select()
       .from(evaluationJobs)
       .where(eq(evaluationJobs.sessionId, overflowSession.id))
-    expect(jobsForOverflow).toHaveLength(0)
+    expect(jobsForOverflow).toHaveLength(1)
+    expect(jobsForOverflow[0].status).toBe('pending')
   })
 
   it('resolves tenant from exam, not from session.tenantId (which may be null for public exams)', async () => {

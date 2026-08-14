@@ -73,8 +73,18 @@ const trustedOrigins =
         'http://localhost:8000',
         'http://127.0.0.1:3000',
         'http://127.0.0.1:8000',
+        // The ops panel (Vite, default port 5173). Listed under lvh.me as well as
+        // localhost because that is the host the deployed panel mirrors.
+        'http://admin.lvh.me:5173',
+        'http://localhost:5173',
       ]
-    : [`https://${env.APP_DOMAIN}`, `https://*.${env.APP_DOMAIN}`]
+    : [
+        `https://${env.APP_DOMAIN}`,
+        `https://*.${env.APP_DOMAIN}`,
+        // Covered by the wildcard while the ops panel is at admin.<APP_DOMAIN>;
+        // this is what carries it over to a genuinely separate domain later.
+        ...(env.OPS_ORIGIN ? [env.OPS_ORIGIN] : []),
+      ]
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {

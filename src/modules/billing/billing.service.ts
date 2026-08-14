@@ -78,11 +78,26 @@ export async function hasFeature(tenantId: string, feature: keyof PlanFeatures):
   return PLANS[name].features[feature]
 }
 
-export async function isWithinLimit(tenantId: string, limit: keyof PlanLimits): Promise<boolean> {
+/**
+ * Usage against a limit without deciding anything about it.
+ *
+ * Callers that must not be blocked by a quota — `ai_evaluations` above all, see
+ * the note in `config/plans.ts` — use this to log or flag an overage and carry
+ * on, rather than `assertWithinLimit`, which aborts the operation.
+ */
+export async function getLimitUsage(
+  tenantId: string,
+  limit: keyof PlanLimits,
+): Promise<{ current: number; max: number; within: boolean }> {
   const name = await resolvePlanName(tenantId)
   const max = PLANS[name].limits[limit]
   const current = await countUsage(tenantId, limit)
-  return current < max
+  return { current, max, within: current < max }
+}
+
+export async function isWithinLimit(tenantId: string, limit: keyof PlanLimits): Promise<boolean> {
+  const { within } = await getLimitUsage(tenantId, limit)
+  return within
 }
 
 export async function assertWithinLimit(tenantId: string, limit: keyof PlanLimits): Promise<void> {

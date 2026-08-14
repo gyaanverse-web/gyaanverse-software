@@ -6,6 +6,7 @@ import {
   getReportForTenant,
   listReportsForExam,
   listReportsForStudent,
+  listSessionsAwaitingReport,
 } from './report.service.js'
 
 const AUTH = [{ bearerAuth: [] }]
@@ -83,7 +84,9 @@ export async function reportRoutes(app: FastifyInstance) {
     schema: {
       tags: ['Reports'],
       summary: 'List reports for an exam',
-      description: 'Returns all student reports for the given exam, each with the student\'s name and email, ordered by student name. Teachers only see reports for exams they created; owners see all.',
+      description:
+        'Returns all student reports for the given exam, each with the student\'s name and email, ordered by student name. Teachers only see reports for exams they created; owners see all. ' +
+        '`awaitingReport` lists students whose paper is in but whose report does not exist yet, so the roster can be accounted for in full; it carries identity only and never says why a given student is on it.',
       security: AUTH,
       params: {
         type: 'object',
@@ -96,6 +99,10 @@ export async function reportRoutes(app: FastifyInstance) {
     const { examId } = req.params as { examId: string }
     const tenant = req.tenant!
     const user = req.user!
-    return { reports: await listReportsForExam(examId, tenant.id, user.id, user.role) }
+    const [reports, awaitingReport] = await Promise.all([
+      listReportsForExam(examId, tenant.id, user.id, user.role),
+      listSessionsAwaitingReport(examId, tenant.id, user.id, user.role),
+    ])
+    return { reports, awaitingReport }
   })
 }

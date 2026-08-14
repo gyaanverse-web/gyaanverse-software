@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seed Studio</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel-2: #1e222b; --line: #2a2f3a;
+    --ink: #e6e9ef; --muted: #939bab; --accent: #4c8dff; --accent-ink: #fff;
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  }
+  header {
+    padding: 20px 28px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: .3px; }
+  header .meta { color: var(--muted); font-size: 12px; font-family: ui-monospace, monospace; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 20px 80px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 18px;
+  }
+  .card > h2 {
+    margin: 0 0 4px; font-size: 15px; display: flex; align-items: center; gap: 10px;
+  }
+  .card > h2 .n {
+    width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--panel-2);
+    border: 1px solid var(--line); color: var(--muted);
+    display: grid; place-items: center; font-size: 12px; font-weight: 600;
+  }
+  .card > p.hint { margin: 0 0 14px 32px; color: var(--muted); font-size: 12.5px; }
+  .body { padding-left: 32px; }
+
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 150px; flex: 1; }
+  .field.narrow { flex: 0 0 110px; min-width: 110px; }
+  .field label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  input, select, textarea {
+    background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 9px; font: inherit; font-size: 13px; width: 100%;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button {
+    background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px;
+    padding: 8px 14px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    white-space: nowrap;
+  }
+  button.ghost { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  label.check { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink); }
+  label.check input { width: auto; }
+
+  details.new { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 10px; }
+  details.new > summary { cursor: pointer; color: var(--accent); font-size: 12.5px; list-style: none; }
+  details.new > summary::-webkit-details-marker { display: none; }
+  details.new > summary::before { content: "＋ "; }
+
+  .out { margin-top: 10px; font-size: 12.5px; font-family: ui-monospace, monospace; white-space: pre-wrap; }
+  .out.ok { color: var(--ok); } .out.bad { color: var(--bad); } .out.busy { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12.5px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 11.5px; text-transform: uppercase; }
+  td.mono, th.mono { font-family: ui-monospace, monospace; }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 11px; border: 1px solid var(--line); }
+  .pill.ok { color: var(--ok); border-color: var(--ok); }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.bad { color: var(--bad); border-color: var(--bad); }
+  .roster { max-height: 210px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  .roster label { display: flex; gap: 8px; align-items: center; padding: 2px 0; font-size: 13px; }
+  .roster input { width: auto; }
+  .notice { border-left: 3px solid var(--warn); padding: 8px 12px; background: var(--panel-2); border-radius: 0 6px 6px 0; color: var(--muted); font-size: 12.5px; margin-bottom: 12px; }
+  .notice.cost { border-left-color: var(--bad); }
+  a { color: var(--accent); }
+  img.sheet { max-width: 100%; border-radius: 6px; border: 1px solid var(--line); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Seed Studio</h1>
+  <span class="meta" id="dbmeta"></span>
+</header>
+
+<main>
+
+  <!-- 1 ── Coaching -->
+  <section class="card">
+    <h2><span class="n">1</span> Coaching</h2>
+    <p class="hint">Everything below is scoped to whichever coaching is selected here.</p>
+    <div class="body">
+      <div class="row">
+        <div class="field">
+          <label for="tenant">Existing coaching</label>
+          <select id="tenant"></select>
+        </div>
+        <button class="ghost" id="reload">Reload</button>
+      </div>
+      <details class="new">
+        <summary>Create a new coaching</summary>
+        <div class="row">
+          <div class="field"><label>Name</label><input id="t-name" placeholder="Vescavia Classes"></div>
+          <div class="field"><label>Slug</label><input id="t-slug" placeholder="vescavia"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Owner name</label><input id="t-owner-name" placeholder="Owner"></div>
+          <div class="field"><label>Owner email</label><input id="t-owner-email" placeholder="owner@gmail.com"></div>
+          <div class="field"><label>Password</label><input id="t-pass" value="Safdar@1234"></div>
+          <button id="t-create">Create</button>
+        </div>
+        <div class="out" id="t-out"></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- 2 ── Teacher -->
+  <section class="card">
+    <h2><span class="n">2</span> Teacher</h2>
+    <p class="hint">The teacher who owns the class and authors the exam.</p>
+    <div class="body">
+      <div class="row">
+        <div class="field"><label for="teacher">Existing teacher</label><select id="teacher"></select></div>
+      </div>
+      <details class="new">
+        <summary>Create a new teacher</summary>
+        <div class="row">
+          <div class="field"><label>Name</label><input id="te-name" placeholder="Teacher 2"></div>
+          <div class="field"><label>Email</label><input id="te-email" placeholder="t2@gmail.com"></div>
+          <div class="field"><label>Password</label><input id="te-pass" value="Safdar@1234"></div>
+          <button id="te-create">Create</button>
+        </div>
+        <div class="out" id="te-out"></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- 3 ── Class -->
+  <section class="card">
+    <h2><span class="n">3</span> Class</h2>
+    <p class="hint">Students are enrolled here, and the exam is published to it.</p>
+    <div class="body">
+      <div class="row">
+        <div class="field"><label for="klass">Existing class</label><select id="klass"></select></div>
+      </div>
+      <details class="new">
+        <summary>Create a new class</summary>
+        <div class="row">
+          <div class="field"><label>Name</label><input id="c-name" placeholder="Physics Batch 11 B"></div>
+          <div class="field narrow"><label>Grade</label><input id="c-grade" placeholder="11"></div>
+          <button id="c-create">Create</button>
+        </div>
+        <div class="out" id="c-out"></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- 4 ── Students -->
+  <section class="card">
+    <h2><span class="n">4</span> Students</h2>
+    <p class="hint">Creates verified accounts that can sign in, and enrols them in the selected class. Re-running is safe — existing emails are reused, not duplicated.</p>
+    <div class="body">
+      <div class="row">
+        <div class="field narrow"><label>How many</label><input id="s-count" type="number" value="10" min="1" max="200"></div>
+        <div class="field narrow"><label>Start at</label><input id="s-start" type="number" value="1" min="1"></div>
+        <div class="field"><label>Email pattern</label><input id="s-pattern" value="st{n}@gmail.com"></div>
+        <div class="field"><label>Password</label><input id="s-pass" value="Safdar@1234"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Name prefix</label><input id="s-prefix" value="Student"></div>
+        <label class="check"><input type="checkbox" id="s-reset"> Reset password on existing accounts</label>
+        <button id="s-create">Create students</button>
+      </div>
+      <div class="out" id="s-out"></div>
+      <div id="s-table"></div>
+    </div>
+  </section>
+
+  <!-- 5 ── Syllabus & questions -->
+  <section class="card">
+    <h2><span class="n">5</span> Syllabus &amp; question bank</h2>
+    <p class="hint">A pack is a whole subject → module → chapter → section → concept tree plus its questions, imported as <em>active</em> and <em>verified</em> so the teacher can pick them in the question bank and the test generator straight away.</p>
+    <div class="body">
+      <div class="row">
+        <div class="field"><label for="pack">Content pack</label><select id="pack"></select></div>
+        <button id="p-import">Import into coaching</button>
+      </div>
+      <div class="out" id="p-out"></div>
+      <div id="subject-table"></div>
+
+      <details class="new">
+        <summary>Add a single node to the tree</summary>
+        <div class="row">
+          <div class="field"><label>Subject</label><select id="h-subject"></select></div>
+          <div class="field"><label>Module</label><select id="h-module"></select></div>
+          <div class="field"><label>Chapter</label><select id="h-chapter"></select></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Section</label><select id="h-section"></select></div>
+          <div class="field"><label>Concept</label><select id="h-concept"></select></div>
+        </div>
+        <div class="row">
+          <div class="field narrow"><label>New level</label>
+            <select id="h-level">
+              <option value="subject">subject</option>
+              <option value="module">module</option>
+              <option value="chapter">chapter</option>
+              <option value="section">section</option>
+              <option value="concept">concept</option>
+            </select>
+          </div>
+          <div class="field"><label>Name</label><input id="h-name" placeholder="Rotational Motion"></div>
+          <div class="field narrow"><label>Grade (subject only)</label><input id="h-grade" placeholder="11"></div>
+          <button id="h-create">Add node</button>
+        </div>
+        <div class="out" id="h-out"></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- 6 ── Attempts -->
+  <section class="card">
+    <h2><span class="n">6</span> Sit the exam</h2>
+    <p class="hint">Author and schedule the paper in the app as the teacher, then come back here to have the class attempt it. Each student gets a session, answers, and a real submit — objective questions are graded instantly, subjective ones go to the AI evaluator.</p>
+    <div class="body">
+      <div class="notice">Needs <code>npm run dev:worker</code> running, plus the Flask engine on <code>EVAL_ENGINE_URL</code>. Without the worker the papers just queue.</div>
+
+      <div class="row">
+        <div class="field"><label for="exam">Exam</label><select id="exam"></select></div>
+      </div>
+      <div id="exam-plan"></div>
+
+      <div class="row">
+        <div class="field">
+          <label>Default answer sheet <span style="text-transform:none">— used for questions with no matched sheet</span></label>
+          <select id="sheet"></select>
+        </div>
+        <div class="field">
+          <label>Ungradeable sheet — one answer, last student in the list</label>
+          <select id="sheet-bad"><option value="">none</option></select>
+        </div>
+      </div>
+      <div id="sheet-preview"></div>
+
+      <div class="row">
+        <div class="field narrow"><label>Objective % correct</label><input id="rate" type="number" value="60" min="0" max="100"></div>
+        <label class="check"><input type="checkbox" id="close-window" checked> Close the exam window afterwards</label>
+      </div>
+
+      <div class="row"><div class="field"><label>Students</label></div></div>
+      <div class="roster" id="roster"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost" id="roster-all">Select all</button>
+        <button class="ghost" id="roster-none">Clear</button>
+        <button class="ghost" id="sim-dry">Dry run</button>
+        <button id="sim-run">Submit papers</button>
+      </div>
+      <div class="notice cost" id="cost"></div>
+      <div class="out" id="sim-out"></div>
+      <div id="sim-table"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id)
+let state = { tenants: [], tenant: null, packs: [], answerSheets: [] }
+
+// ── plumbing ────────────────────────────────────────────────────────────────
+async function api(path, opts) {
+  const res = await fetch(path, opts)
+  const data = await res.json().catch(() => ({ error: 'Bad response' }))
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+  return data
+}
+const post = (path, body) => api(path, {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+})
+
+function say(el, text, cls) { el.className = 'out ' + (cls || ''); el.textContent = text }
+async function run(el, label, fn) {
+  say(el, label + '…', 'busy')
+  try { const r = await fn(); say(el, r?.message || 'Done.', 'ok'); return r }
+  catch (e) { say(el, '✗ ' + e.message, 'bad'); throw e }
+}
+
+function fill(sel, items, { value = 'id', label = 'name', keep = true, empty = null } = {}) {
+  const prev = keep ? sel.value : null
+  sel.innerHTML = ''
+  if (empty) sel.append(new Option(empty, ''))
+  for (const it of items) sel.append(new Option(typeof label === 'function' ? label(it) : it[label], it[value]))
+  if (prev && items.some((i) => i[value] === prev)) sel.value = prev
+}
+
+const tenantId = () => $('tenant').value
+const classId  = () => $('klass').value
+
+// ── load ────────────────────────────────────────────────────────────────────
+async function refresh() {
+  const data = await api('/api/state' + (tenantId() ? `?tenantId=${tenantId()}` : ''))
+  state = data
+  $('dbmeta').textContent = `sheets: ${data.sheetsDir}${data.sheetsDirExists ? '' : '  (MISSING)'}`
+
+  fill($('tenant'), data.tenants, { label: (t) => `${t.name}  (${t.slug} · ${t.plan})` })
+  if (!tenantId() && data.tenants.length) { $('tenant').value = data.tenants[0].id; return refresh() }
+
+  const t = data.tenant
+  if (!t) return
+
+  fill($('teacher'), t.teachers, { label: (x) => `${x.name} — ${x.email}` })
+  fill($('klass'), t.classes, { label: (c) => `${c.name}${c.grade ? ' · grade ' + c.grade : ''} — ${c.members} student(s)` })
+  fill($('pack'), data.packs, {
+    label: (p) => `${p.label} — ${p.counts.total} questions (${p.counts.subjective} subjective, ${p.counts.matched} with answer sheets)`,
+  })
+  fill($('exam'), t.exams, {
+    label: (e) => `${e.title} — ${e.status} · ${e.questionCount}Q (${e.subjectiveCount} subjective) · ${e.sessionCount} session(s)`,
+    empty: '— pick an exam —',
+  })
+
+  const sheets = data.answerSheets.map((f) => ({ id: f, name: f }))
+  fill($('sheet'), sheets)
+  fill($('sheet-bad'), sheets, { empty: 'none' })
+
+  renderSubjects(t.subjects)
+  await Promise.all([loadRoster(), loadExamPlan(), loadHierarchy('subject')])
+}
+
+function renderSubjects(subjects) {
+  if (!subjects.length) return ($('subject-table').innerHTML =
+    '<p class="hint" style="margin-left:0">No subjects yet — import a pack.</p>')
+  $('subject-table').innerHTML =
+    '<table><tr><th>Subject</th><th>Grade</th><th>Active bank questions</th><th>Subjective</th></tr>' +
+    subjects.map((s) => `<tr><td>${esc(s.name)}</td><td>${esc(s.gradeLevel || '—')}</td>
+      <td class="mono">${s.bankQuestions}</td><td class="mono">${s.subjectiveQuestions}</td></tr>`).join('') +
+    '</table>'
+}
+
+function esc(s) { return String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])) }
+
+// ── roster + exam plan ──────────────────────────────────────────────────────
+async function loadRoster() {
+  if (!classId()) return ($('roster').innerHTML = '<p class="hint" style="margin:0">Pick a class first.</p>')
+  const { students } = await api(`/api/roster?classId=${classId()}`)
+  $('roster').innerHTML = students.length
+    ? students.map((s) => `<label><input type="checkbox" class="stu" value="${s.id}" checked>
+        ${esc(s.name)} <span style="color:var(--muted)">${esc(s.email)}</span></label>`).join('')
+    : '<p class="hint" style="margin:0">No students enrolled yet — use step 4.</p>'
+  updateCost()
+}
+
+async function loadExamPlan() {
+  const el = $('exam-plan')
+  if (!$('exam').value) { el.innerHTML = ''; return updateCost() }
+  const { questions } = await api(`/api/exam-plan?examId=${$('exam').value}`)
+  el.innerHTML = '<table><tr><th>#</th><th>Type</th><th>Marks</th><th>Question</th><th>Matched answer sheets</th></tr>' +
+    questions.map((q) => {
+      const sheets = q.answerSheets.length
+        ? q.answerSheets.map((s) => `<span class="pill ${s.quality === 'correct' ? 'ok' : s.quality === 'partial' ? 'warn' : 'bad'}">${esc(s.file)} · ${s.quality}</span>`).join(' ')
+        : (q.type === 'subjective' ? '<span class="pill">default sheet — score will be noise</span>' : '—')
+      return `<tr><td class="mono">${q.order}</td><td>${esc(q.type)}</td><td class="mono">${q.marks}</td>
+        <td>${esc(q.body)}</td><td>${sheets}</td></tr>`
+    }).join('') + '</table>'
+  el.dataset.subjective = questions.filter((q) => q.type === 'subjective').length
+  updateCost()
+}
+
+function selectedStudents() {
+  return [...document.querySelectorAll('.stu:checked')].map((c) => c.value)
+}
+
+function updateCost() {
+  const n = selectedStudents().length
+  const subj = Number($('exam-plan').dataset.subjective || 0)
+  $('cost').textContent = n && subj
+    ? `${n} students × ${subj} subjective questions = ${n * subj} grading calls against the real engine, every one of them billed. OCR is cached per image, so it costs one read per distinct answer sheet. Run a dry run for the exact figure.`
+    : 'Pick an exam and at least one student to see the engine cost.'
+}
+
+// ── hierarchy cascade ───────────────────────────────────────────────────────
+const LEVELS = ['subject', 'module', 'chapter', 'section', 'concept']
+async function loadHierarchy(from) {
+  const start = LEVELS.indexOf(from)
+  for (let i = start; i < LEVELS.length; i++) {
+    const level = LEVELS[i]
+    const parent = i === 0 ? null : $('h-' + LEVELS[i - 1]).value
+    const sel = $('h-' + level)
+    if (i > 0 && !parent) { sel.innerHTML = ''; sel.append(new Option('—', '')); continue }
+    const { nodes } = await api(`/api/hierarchy?tenantId=${tenantId()}&level=${level}` + (parent ? `&parentId=${parent}` : ''))
+    fill(sel, nodes, { label: (n) => n.name + (n.extra ? ` · grade ${n.extra}` : ''), empty: '—' })
+  }
+}
+
+// ── wiring ──────────────────────────────────────────────────────────────────
+$('tenant').onchange = refresh
+$('reload').onclick = refresh
+$('klass').onchange = loadRoster
+$('exam').onchange = loadExamPlan
+$('sheet').onchange = () => {
+  $('sheet-preview').innerHTML = $('sheet').value
+    ? `<img class="sheet" src="/sheets/${encodeURIComponent($('sheet').value)}" alt="">` : ''
+}
+for (const l of LEVELS.slice(0, 4)) $('h-' + l).onchange = () => loadHierarchy(LEVELS[LEVELS.indexOf(l) + 1])
+
+$('t-create').onclick = async () => {
+  await run($('t-out'), 'Creating coaching', () => post('/api/coaching', {
+    name: $('t-name').value, slug: $('t-slug').value,
+    ownerName: $('t-owner-name').value, ownerEmail: $('t-owner-email').value, password: $('t-pass').value,
+  }))
+  await refresh()
+}
+
+$('te-create').onclick = async () => {
+  await run($('te-out'), 'Creating teacher', () => post('/api/teacher', {
+    tenantId: tenantId(), name: $('te-name').value, email: $('te-email').value, password: $('te-pass').value,
+  }))
+  await refresh()
+}
+
+$('c-create').onclick = async () => {
+  await run($('c-out'), 'Creating class', () => post('/api/class', {
+    tenantId: tenantId(), teacherId: $('teacher').value, name: $('c-name').value, grade: $('c-grade').value,
+  }))
+  await refresh()
+}
+
+$('s-create').onclick = async () => {
+  const r = await run($('s-out'), 'Creating students', () => post('/api/students', {
+    tenantId: tenantId(), classId: classId(),
+    count: Number($('s-count').value), startIndex: Number($('s-start').value),
+    emailPattern: $('s-pattern').value, password: $('s-pass').value,
+    namePrefix: $('s-prefix').value, resetPassword: $('s-reset').checked,
+  }))
+  $('s-table').innerHTML = '<table><tr><th>Email</th><th>Result</th><th>Note</th></tr>' +
+    r.rows.map((x) => `<tr><td class="mono">${esc(x.email)}</td>
+      <td><span class="pill ${x.status === 'created' ? 'ok' : x.status === 'skipped' ? 'bad' : ''}">${x.status}</span></td>
+      <td>${esc(x.note || '')}</td></tr>`).join('') + '</table>'
+  await refresh()
+}
+
+$('p-import').onclick = async () => {
+  await run($('p-out'), 'Importing pack', () => post('/api/pack', { tenantId: tenantId(), packId: $('pack').value }))
+  await refresh()
+}
+
+$('h-create').onclick = async () => {
+  const level = $('h-level').value
+  const parentLevel = LEVELS[LEVELS.indexOf(level) - 1]
+  await run($('h-out'), 'Adding node', () => post('/api/hierarchy', {
+    tenantId: tenantId(), level, name: $('h-name').value, gradeLevel: $('h-grade').value,
+    parentId: parentLevel ? $('h-' + parentLevel).value : null,
+  }))
+  await loadHierarchy('subject')
+  await refresh()
+}
+
+$('roster-all').onclick = () => { document.querySelectorAll('.stu').forEach((c) => (c.checked = true)); updateCost() }
+$('roster-none').onclick = () => { document.querySelectorAll('.stu').forEach((c) => (c.checked = false)); updateCost() }
+document.addEventListener('change', (e) => { if (e.target.classList?.contains('stu')) updateCost() })
+
+async function simulate(dryRun) {
+  const r = await run($('sim-out'), dryRun ? 'Planning' : 'Submitting papers', () => post('/api/simulate', {
+    examId: $('exam').value, studentIds: selectedStudents(),
+    defaultSheet: $('sheet').value, ungradeableSheet: $('sheet-bad').value,
+    correctRate: Number($('rate').value), closeWindow: $('close-window').checked, dryRun,
+  }))
+  $('sim-table').innerHTML = '<table><tr><th>Student</th><th>Result</th><th>Answer sheets used</th></tr>' +
+    r.plan.map((p) => `<tr><td class="mono">${esc(p.email)}</td>
+      <td><span class="pill ${p.status === 'submitted' ? 'ok' : p.status === 'skipped' ? 'bad' : ''}">${esc(p.status)}</span>
+      ${p.note ? ' <span style="color:var(--muted)">' + esc(p.note) + '</span>' : ''}</td>
+      <td class="mono">${esc([...new Set(p.sheets)].join(', '))}</td></tr>`).join('') + '</table>' +
+    (r.windowNote ? `<p class="hint" style="margin-left:0">${esc(r.windowNote)}</p>` : '')
+  await refresh()
+}
+$('sim-dry').onclick = () => simulate(true)
+$('sim-run').onclick = () => simulate(false)
+
+refresh().catch((e) => say($('t-out'), '✗ ' + e.message, 'bad'))
+</script>
+</body>
+</html>

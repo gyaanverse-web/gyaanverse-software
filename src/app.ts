@@ -11,18 +11,17 @@ import { examSessionRoutes } from './modules/exam-session/exam-session.routes.js
 import { paymentRoutes } from './modules/payment/payment.routes.js'
 import { notificationRoutes } from './modules/notification/notification.routes.js'
 import { evaluationRoutes } from './modules/evaluation/evaluation.routes.js'
+import { evaluationInternalRoutes } from './modules/evaluation/evaluation.internal.routes.js'
 import { storageRoutes } from './modules/storage/storage.routes.js'
 import { reportRoutes } from './modules/report/report.routes.js'
 import { examReviewRoutes } from './modules/exam-review/exam-review.routes.js'
-import { createBoard } from './config/bull-board.js'
+import { registerBullBoard } from './config/bull-board.js'
+import { registerApiDocs } from './config/docs.js'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import cookie from '@fastify/cookie'
 import sensible from '@fastify/sensible'
 import rateLimit from '@fastify/rate-limit'
-import swagger from '@fastify/swagger'
-import swaggerUi from '@fastify/swagger-ui'
-import { swaggerConfig } from './config/swagger.js'
 import { registerQueryLog } from './shared/query-log.js'
 import { getRateLimitRedis, rateLimitKey, waitForRateLimitRedis } from './shared/rate-limit.js'
 
@@ -58,6 +57,18 @@ export async function buildApp() {
         new RegExp(`^https://[a-z0-9-]+\\.${appDomain.replace(/\./g, '\\.')}$`),
       ]
     : []
+
+  // The operator panel is deployed separately from the app (see env.ts). While it
+  // sits at admin.<APP_DOMAIN> the regex above already covers it and this adds
+  // nothing; once it moves to its own domain — the point of deploying it apart —
+  // this line is what keeps it able to reach the API at all.
+  //
+  // Worth knowing when it does move: a missing origin here does not present as an
+  // auth or config error, it presents as a CORS failure in the browser, which is
+  // exactly how the 2026 wildcard-TLS incident disguised itself. If the panel
+  // dies on a domain switch, check OPS_ORIGIN before believing the error.
+  const opsOrigin = process.env.OPS_ORIGIN
+  if (opsOrigin) prodOrigins.push(opsOrigin)
 
   await app.register(cors, {
     origin: isDev ? true : prodOrigins,
@@ -105,20 +116,26 @@ export async function buildApp() {
     app.log.warn('Rate limiter Redis not ready — limits fail open until it connects')
   }
 
-  // ── OpenAPI docs (/docs) — register before routes so all routes are picked up ──
-  await app.register(swagger, swaggerConfig)
-  await app.register(swaggerUi, {
-    routePrefix: '/docs',
-    uiConfig: {
-      docExpansion: 'list',
-      deepLinking: true,
-      persistAuthorization: true,
-    },
-  })
+  // ── Bull Board (/queues) — the fallback ops surface ─────────────────────────
+  //
+  // Registered BEFORE swagger, and that ordering is the point: @fastify/swagger's
+  // `onRoute` hook only sees routes added after it, so nothing under /queues can
+  // reach the public spec even if a library stops setting `schema.hide` for us.
+  // The board's own hook forces `hide` as well — see config/bull-board.ts for
+  // why this is belted and braced rather than trusted to one mechanism.
+  //
+  // Mounts only when it is safe to: in production, a missing BULL_BOARD_PASSWORD
+  // means no board at all, never an unguarded one.
+  await registerBullBoard(app)
 
-  app.get('/openapi.json', async (_req, reply) => {
-    reply.send(app.swagger())
-  })
+  // ── OpenAPI docs (/docs) ───────────────────────────────────────────────────
+  //
+  // Registered before the route files, because @fastify/swagger collects routes
+  // through an `onRoute` hook and cannot see anything added before it.
+  //
+  // Same fail-closed rule as /queues: open in dev and staging, and in production
+  // only when API_DOCS_PASSWORD is set. See config/docs.ts.
+  await registerApiDocs(app)
 
   app.setErrorHandler((error: any, req, reply) => {
     if (error.name === 'AppError') {
@@ -159,15 +176,11 @@ export async function buildApp() {
   await app.register(paymentRoutes)
   await app.register(notificationRoutes)
   await app.register(evaluationRoutes)
+  // Gyanverse platform ops — cross-tenant, super_admin only, hidden from Swagger.
+  await app.register(evaluationInternalRoutes)
   await app.register(storageRoutes)
   await app.register(reportRoutes)
   await app.register(examReviewRoutes)
-
-  if (isDev) {
-    const board = createBoard()
-    await app.register(board.registerPlugin(), { prefix: '/queues' })
-    app.log.info('Bull Board available at http://localhost:8000/queues')
-  }
 
   return app
 }

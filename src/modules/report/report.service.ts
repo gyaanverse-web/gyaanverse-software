@@ -1,4 +1,4 @@
-import { and, desc, eq, or, inArray } from 'drizzle-orm'
+import { and, desc, eq, isNull, or, inArray } from 'drizzle-orm'
 import { db } from '@shared/db.js'
 import { AppError, Errors } from '@shared/errors.js'
 import { reports, reportItems } from './report.schema.js'
@@ -9,6 +9,7 @@ import { assertResultsVisible } from '@modules/exam/exam.service.js'
 import { evaluationJobs, questionResults } from '@modules/evaluation/evaluation.schema.js'
 import { dispatch } from '@modules/notification/index.js'
 import type {
+  AwaitingReportSummary,
   ReportDetail, ReportItem, ReportStatus, ReportSummary, TeacherReportSummary,
 } from './report.types.js'
 
@@ -158,6 +159,101 @@ export async function createReportForSession(sessionId: string): Promise<{ repor
   return { reportId, created: true }
 }
 
+/**
+ * Rebuild a session's report from the current state of its scores.
+ *
+ * `createReportForSession` is idempotent by *early return* — it exists to be
+ * called twice by two paths that both want a report to exist, and returning the
+ * one that is already there is the right answer for both. That makes it exactly
+ * wrong for a correction: a Gyanverse operator scoring a flagged answer by hand
+ * (evaluation.review.ts) changes numbers the report has already frozen, and the
+ * early return would leave the student looking at the placeholder forever.
+ *
+ * So this is the write path for "the scores changed after the fact": create the
+ * report if it is missing, otherwise recompute totals and rewrite the items.
+ * Returns whether anything actually moved, so callers can decide whether the
+ * student is worth notifying.
+ */
+export async function recomputeReportForSession(
+  sessionId: string,
+): Promise<{ reportId: string; created: boolean; changed: boolean }> {
+  const [existing] = await db
+    .select({ id: reports.id, totalScore: reports.totalScore, aiScore: reports.aiScore })
+    .from(reports)
+    .where(eq(reports.sessionId, sessionId))
+    .limit(1)
+
+  if (!existing) {
+    const { reportId } = await createReportForSession(sessionId)
+    return { reportId, created: true, changed: true }
+  }
+
+  const [session] = await db
+    .select({
+      id: examSessions.id,
+      examId: examSessions.examId,
+      autoScore: examSessions.autoScore,
+      manualScore: examSessions.manualScore,
+      totalMarks: examSessions.totalMarks,
+    })
+    .from(examSessions)
+    .where(eq(examSessions.id, sessionId))
+    .limit(1)
+  if (!session) throw Errors.NOT_FOUND('Session')
+
+  const autoScore = session.autoScore ?? 0
+  const aiScore = session.manualScore ?? 0
+  const totalScore = autoScore + aiScore
+  const changed = existing.totalScore !== totalScore || existing.aiScore !== aiScore
+
+  // Only the AI-scored questions can have moved — objective marks are computed
+  // at submit and no manual path touches them. Rewriting just those rows keeps
+  // this from having to reproduce the objective branch of the builder above and
+  // drift away from it.
+  const aiResults = await db
+    .select({
+      questionId: questionResults.questionId,
+      score: questionResults.score,
+      maxScore: questionResults.maxScore,
+      aiFeedback: questionResults.aiFeedback,
+      imageUrl: questionResults.imageUrl,
+    })
+    .from(questionResults)
+    .innerJoin(evaluationJobs, eq(evaluationJobs.id, questionResults.jobId))
+    .where(eq(evaluationJobs.sessionId, sessionId))
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(reports)
+      .set({ totalScore, autoScore, aiScore, maxScore: session.totalMarks })
+      .where(eq(reports.id, existing.id))
+
+    for (const r of aiResults) {
+      await tx
+        .insert(reportItems)
+        .values({
+          reportId: existing.id,
+          questionId: r.questionId,
+          score: r.score,
+          maxScore: r.maxScore,
+          feedback: r.aiFeedback,
+          imageUrl: r.imageUrl,
+        })
+        .onConflictDoUpdate({
+          target: [reportItems.reportId, reportItems.questionId],
+          set: {
+            score: r.score,
+            maxScore: r.maxScore,
+            feedback: r.aiFeedback,
+            imageUrl: r.imageUrl,
+          },
+        })
+    }
+  })
+
+  return { reportId: existing.id, created: false, changed }
+}
+
 // ── Reads ─────────────────────────────────────────────────────────────────
 
 export async function getReportForStudent(sessionId: string, studentId: string) {
@@ -232,12 +328,20 @@ export async function listReportsForStudent(studentId: string): Promise<ReportSu
     .orderBy(desc(reports.createdAt)) as Promise<ReportSummary[]>
 }
 
-export async function listReportsForExam(
+/**
+ * Teachers read only their own papers; owners read every paper in the tenant.
+ *
+ * Shared by both exam-scoped reads below rather than copied into each. A guard
+ * duplicated per call site is a guard that gets *tightened* per call site — the
+ * next change to it would have to find every copy, and would miss whichever one
+ * was added last.
+ */
+async function assertCanReadExamReports(
   examId: string,
   tenantId: string,
   requesterId: string,
   requesterRole: string,
-): Promise<TeacherReportSummary[]> {
+) {
   const [exam] = await db
     .select({ id: exams.id, createdBy: exams.createdBy })
     .from(exams)
@@ -247,6 +351,16 @@ export async function listReportsForExam(
   if (requesterRole !== 'coaching_owner' && exam.createdBy !== requesterId) {
     throw new AppError('FORBIDDEN', 'You can only view reports for exams you created', 403)
   }
+  return exam
+}
+
+export async function listReportsForExam(
+  examId: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+): Promise<TeacherReportSummary[]> {
+  await assertCanReadExamReports(examId, tenantId, requesterId, requesterRole)
 
   return db
     .select({
@@ -272,6 +386,55 @@ export async function listReportsForExam(
     // Marks lists are read by name, not by recency — a reviewer scanning for a
     // student should not have to hunt through submission order.
     .orderBy(users.name) as Promise<TeacherReportSummary[]>
+}
+
+/**
+ * Students who have a paper in but no report row yet.
+ *
+ * The Reports tab lists `reports`, so a session without one is simply absent —
+ * on a 30-student exam the teacher sees 29 rows and no account of the 30th.
+ * This is what lets the screen name everybody.
+ *
+ * **It deliberately does not say why any given student is here, and the query is
+ * built so it cannot.** Two quite different situations produce a missing report:
+ * the paper is mid-evaluation, or the Phase 6 backstop flagged an answer and is
+ * holding the report until a Gyanverse operator scores it. Returning only the
+ * flagged ones would tell the teacher exactly whose answer the AI could not
+ * read — the failure visibility the whole resilience plan removes, re-created
+ * one screen further along. So the predicate is the *absence of a report* and
+ * nothing else, the two cases are indistinguishable in the response, and the UI
+ * gives them one label.
+ *
+ * Scoped to sessions that can still produce a report: `abandoned` never will,
+ * and `in_progress` is a student still writing, not a result being waited on.
+ */
+export async function listSessionsAwaitingReport(
+  examId: string,
+  tenantId: string,
+  requesterId: string,
+  requesterRole: string,
+): Promise<AwaitingReportSummary[]> {
+  await assertCanReadExamReports(examId, tenantId, requesterId, requesterRole)
+
+  return db
+    .select({
+      sessionId: examSessions.id,
+      studentId: examSessions.studentId,
+      studentName: users.name,
+      studentEmail: users.email,
+      submittedAt: examSessions.submittedAt,
+    })
+    .from(examSessions)
+    .innerJoin(users, eq(users.id, examSessions.studentId))
+    .leftJoin(reports, eq(reports.sessionId, examSessions.id))
+    .where(
+      and(
+        eq(examSessions.examId, examId),
+        inArray(examSessions.status, ['submitted', 'evaluated']),
+        isNull(reports.id),
+      ),
+    )
+    .orderBy(users.name) as Promise<AwaitingReportSummary[]>
 }
 
 // ── Internal ──────────────────────────────────────────────────────────────

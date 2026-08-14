@@ -3,6 +3,7 @@ import {
   createReportForSession,
   getReportForTenant,
   listReportsForExam,
+  listSessionsAwaitingReport,
 } from '@modules/report/report.service.js'
 import {
   seedTenantWithUsers,
@@ -70,6 +71,101 @@ describe('listReportsForExam — teacher review list', () => {
 
     await expect(
       listReportsForExam(exam.id, tenant.id, otherTeacher.id, 'teacher'),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 })
+  })
+})
+
+describe('listSessionsAwaitingReport — accounting for the rest of the roster', () => {
+  // The gap this closes: `listReportsForExam` selects `.from(reports)`, so a
+  // session the backstop is holding is simply absent from the marks table. On a
+  // 30-student exam the teacher sees 29 rows and no mention of the 30th.
+
+  it('names a submitted student who has no report yet', async () => {
+    const { tenant, teacher, exam } = await seedExamWithTwoReports()
+    const priya = await createTestUser({ role: 'student', tenantId: tenant.id, name: 'Priya Rao' })
+    await createTestSession({
+      examId: exam.id, studentId: priya.id, tenantId: tenant.id,
+      totalMarks: 10, status: 'submitted',
+    })
+
+    const rows = await listSessionsAwaitingReport(exam.id, tenant.id, teacher.id, 'teacher')
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].studentName).toBe('Priya Rao')
+    expect(rows[0].studentId).toBe(priya.id)
+  })
+
+  it('CRITICAL: says nothing about WHY a student is waiting', async () => {
+    // The whole point. A field that separated "still evaluating" from "held for
+    // a Gyanverse operator" would tell the teacher exactly whose answer the AI
+    // could not read — the failure visibility Phase 8 removed, one screen along.
+    const { tenant, teacher, exam } = await seedExamWithTwoReports()
+    const priya = await createTestUser({ role: 'student', tenantId: tenant.id, name: 'Priya Rao' })
+    await createTestSession({
+      examId: exam.id, studentId: priya.id, tenantId: tenant.id,
+      totalMarks: 10, status: 'evaluated',
+    })
+
+    const rows = await listSessionsAwaitingReport(exam.id, tenant.id, teacher.id, 'teacher')
+
+    expect(Object.keys(rows[0]).sort()).toEqual(
+      ['sessionId', 'studentEmail', 'studentId', 'studentName', 'submittedAt'],
+    )
+  })
+
+  it('an evaluated session and a submitted one are indistinguishable in the response', async () => {
+    // Same rule from the other side: these are the two states that produce a
+    // missing report, and the teacher must not be able to tell them apart.
+    const { tenant, teacher, exam } = await seedExamWithTwoReports()
+    for (const [name, status] of [['Ana One', 'submitted'], ['Bo Two', 'evaluated']] as const) {
+      const s = await createTestUser({ role: 'student', tenantId: tenant.id, name })
+      await createTestSession({
+        examId: exam.id, studentId: s.id, tenantId: tenant.id, totalMarks: 10, status,
+      })
+    }
+
+    const rows = await listSessionsAwaitingReport(exam.id, tenant.id, teacher.id, 'teacher')
+
+    expect(rows.map((r) => r.studentName)).toEqual(['Ana One', 'Bo Two'])
+    // Identical shape, and no value anywhere that names a state. (Asserted on
+    // values, not on the serialized blob — `submittedAt` is a key, and matching
+    // it would fail this for the wrong reason.)
+    expect(Object.keys(rows[0])).toEqual(Object.keys(rows[1]))
+    const values = rows.flatMap((r) => Object.values(r)).map(String)
+    expect(values.filter((v) => /^(submitted|evaluated|needs_human|resolved)$/i.test(v))).toEqual([])
+  })
+
+  it('excludes students who already have a report', async () => {
+    const { tenant, teacher, exam } = await seedExamWithTwoReports()
+
+    const rows = await listSessionsAwaitingReport(exam.id, tenant.id, teacher.id, 'teacher')
+
+    expect(rows).toHaveLength(0)
+  })
+
+  it('ignores in_progress and abandoned sessions', async () => {
+    // Neither is a result being waited on: one is a student still writing, the
+    // other will never produce a report at all. Listing them would turn this
+    // into a roster of everyone who ever opened the paper.
+    const { tenant, teacher, exam } = await seedExamWithTwoReports()
+    for (const status of ['in_progress', 'abandoned'] as const) {
+      const s = await createTestUser({ role: 'student', tenantId: tenant.id })
+      await createTestSession({
+        examId: exam.id, studentId: s.id, tenantId: tenant.id, totalMarks: 10, status,
+      })
+    }
+
+    const rows = await listSessionsAwaitingReport(exam.id, tenant.id, teacher.id, 'teacher')
+
+    expect(rows).toHaveLength(0)
+  })
+
+  it('CRITICAL: honours the same authorship guard as the reports list', async () => {
+    const { tenant, exam } = await seedExamWithTwoReports()
+    const otherTeacher = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+
+    await expect(
+      listSessionsAwaitingReport(exam.id, tenant.id, otherTeacher.id, 'teacher'),
     ).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 })
   })
 })

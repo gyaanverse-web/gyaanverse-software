@@ -18,7 +18,11 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:questions": "tsx scripts/seed-questions.ts",
+    "seed:studio": "tsx scripts/seed-studio.ts",
     "db:reset": "tsx scripts/reset-db.ts",
+    "ops:promote": "tsx scripts/ops-promote.ts",
+    "eval:fixture": "tsx scripts/eval-fixture.ts",
+    "eval:inspect": "tsx scripts/eval-inspect.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

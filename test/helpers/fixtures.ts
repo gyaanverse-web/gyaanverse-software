@@ -289,6 +289,9 @@ export async function createQuestionResult(params: {
   maxScore: number
   imageUrl: string
   aiFeedback?: string | null
+  // Defaults to 'ai', i.e. the machine graded it and nobody had to look. Pass
+  // 'needs_human' to stand in for a row the Phase 6 backstop parked.
+  reviewStatus?: 'ai' | 'needs_human' | 'resolved'
 }) {
   const [r] = await db
     .insert(questionResults)
@@ -299,6 +302,7 @@ export async function createQuestionResult(params: {
       maxScore: params.maxScore,
       imageUrl: params.imageUrl,
       aiFeedback: params.aiFeedback ?? null,
+      reviewStatus: params.reviewStatus ?? 'ai',
     })
     .returning()
   return r

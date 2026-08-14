@@ -1,6 +1,15 @@
 import type { FastifyDynamicSwaggerOptions } from '@fastify/swagger'
+import { env } from './env.js'
 
-export const swaggerConfig: FastifyDynamicSwaggerOptions = {
+// A function, not a constant: the `servers` block below has to name the host the
+// reader is actually talking to. Hard-coded `http://localhost:8000` meant every
+// "Try it out" button in staging fired at the reader's own machine and failed
+// with a connection error that looks exactly like the API being down.
+//
+// BETTER_AUTH_URL is the API's own public base URL by definition — better-auth
+// builds its callback URLs from it — so it is the one variable that is already
+// guaranteed correct per environment. No new variable needed for this.
+export const swaggerConfig = (): FastifyDynamicSwaggerOptions => ({
   openapi: {
     openapi: '3.0.3',
     info: {
@@ -46,8 +55,8 @@ never infer a tenant role from the platform role.
     },
     servers: [
       {
-        url: 'http://localhost:8000',
-        description: 'Local development',
+        url: env.BETTER_AUTH_URL,
+        description: env.NODE_ENV === 'production' ? 'This deployment' : 'Local development',
       },
     ],
     components: {
@@ -84,4 +93,4 @@ never infer a tenant role from the platform role.
       { name: 'Reports', description: 'Exam and student performance reports' },
     ],
   },
-}
+})

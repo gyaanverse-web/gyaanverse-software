@@ -11,6 +11,13 @@ export async function authenticate(req: FastifyRequest, _reply: FastifyReply): P
   const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) })
   if (!session) throw Errors.UNAUTHORIZED()
   req.user = { id: session.user.id, role: ((session.user as { role?: Role }).role ?? 'student') as Role }
+  // When the operator actually signed in — not when the session was last refreshed.
+  // Better Auth extends `expiresAt` on activity but leaves `createdAt` alone, which
+  // is the only reason a "re-authenticate every N hours" rule can mean anything:
+  // read off `expiresAt` instead and a session stays valid forever as long as
+  // somebody keeps using it. Consumed by `internalAuth` (middleware/internal.ts);
+  // published here rather than re-fetched there so the cap costs no extra query.
+  req.sessionCreatedAt = session.session?.createdAt ?? undefined
 }
 
 export function requireRole(...roles: Role[]) {
