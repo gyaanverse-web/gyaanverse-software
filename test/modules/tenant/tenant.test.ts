@@ -58,12 +58,11 @@ describe('registerCoaching', () => {
 
   it('rejects reserved slugs', async () => {
     const owner = await createTestUser({ emailVerified: true })
-    await expect(
-      registerCoaching(owner.id, { slug: 'admin', name: 'Admin' }),
-    ).rejects.toMatchObject({ code: 'RESERVED_SLUG' })
-    await expect(
-      registerCoaching(owner.id, { slug: 'www', name: 'WWW' }),
-    ).rejects.toMatchObject({ code: 'RESERVED_SLUG' })
+    for (const slug of ['admin', 'www', 'auth', 'cdn', 'staging', 'secure', 'billing', 'gyaanverse']) {
+      await expect(
+        registerCoaching(owner.id, { slug, name: `Reserved ${slug}` }),
+      ).rejects.toMatchObject({ code: 'RESERVED_SLUG' })
+    }
   })
 
   it('rejects duplicate slugs', async () => {
@@ -90,6 +89,17 @@ describe('registerCoaching', () => {
     await expect(
       registerCoaching(owner.id, { slug: 'Has Spaces', name: 'Bad' }),
     ).rejects.toMatchObject({ code: 'INVALID_SLUG' })
+  })
+
+  // These all used to be accepted and would have produced a tenant on an
+  // unreachable hostname (or, for xn--, a homograph-spoofable one).
+  it('rejects slugs that are not valid DNS labels', async () => {
+    const owner = await createTestUser({ emailVerified: true })
+    for (const slug of ['-leading', 'trailing-', '-', 'ab', 'xn--80ak6aa92e']) {
+      await expect(
+        registerCoaching(owner.id, { slug, name: `Bad ${slug}` }),
+      ).rejects.toMatchObject({ code: 'INVALID_SLUG' })
+    }
   })
 })
 

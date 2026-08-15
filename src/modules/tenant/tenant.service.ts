@@ -8,9 +8,8 @@ import { exams } from '../exam/exam.schema.js'
 import { users } from '../auth/auth.schema.js'
 import { assertWithinLimit, assertHasFeature } from '../billing/billing.service.js'
 import { type PlanName } from '../../config/plans.js'
+import { slugRejectionReason, isReservedSlug } from '../../config/reserved-slugs.js'
 import type { Tenant } from './tenant.types.js'
-
-const RESERVED_SLUGS = ['www', 'api', 'admin', 'app', 'static']
 
 function toTenant(row: { status: string } & Omit<Tenant, 'status'>): Tenant {
   if (row.status !== 'active' && row.status !== 'suspended') {
@@ -30,11 +29,12 @@ export async function getTenantById(id: string): Promise<Tenant | null> {
 }
 
 async function validateSlug(slug: string): Promise<void> {
-  if (!/^[a-z0-9-]+$/.test(slug)) {
-    throw new AppError('INVALID_SLUG', 'Slug must contain only lowercase letters, numbers, and hyphens', 422)
-  }
-  if (RESERVED_SLUGS.includes(slug)) {
-    throw new AppError('RESERVED_SLUG', 'That slug is reserved', 409)
+  const reason = slugRejectionReason(slug)
+  if (reason) {
+    // Reserved is a namespace collision (409); anything else is a malformed
+    // value the caller can fix by editing the field (422).
+    if (isReservedSlug(slug)) throw new AppError('RESERVED_SLUG', reason, 409)
+    throw new AppError('INVALID_SLUG', reason, 422)
   }
   const [existing] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, slug)).limit(1)
   if (existing) throw Errors.CONFLICT('That slug is already taken')

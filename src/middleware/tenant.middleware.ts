@@ -1,9 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { getTenantBySlug } from '../modules/tenant/index.js'
 import { AppError } from '../shared/errors.js'
-
-// Subdomains that must never be treated as tenant slugs.
-const RESERVED_SUBDOMAINS = new Set(['www', 'api', 'app', 'admin', 'auth', 'static', 'cdn'])
+import { isReservedSlug } from '../config/reserved-slugs.js'
 
 function extractSubdomainSlug(host: string, suffix: string): string | undefined {
   if (!host.endsWith(suffix)) return undefined
@@ -28,7 +26,7 @@ export async function tenantMiddleware(
     extractSubdomainSlug(host, `.${appDomain}`) ??
     extractSubdomainSlug(host, '.lvh.me')
 
-  if (slug && RESERVED_SUBDOMAINS.has(slug)) slug = undefined
+  if (slug && isReservedSlug(slug)) slug = undefined
 
   // 2. X-Tenant-Slug header — used when the API host differs from the frontend host
   //    (e.g. frontend at niazi.localhost:3000 calling API at localhost:8000)

@@ -17,9 +17,25 @@ import {
   deleteCoaching,
   upgradePlan,
 } from './tenant.service.js'
+import {
+  SLUG_MIN_LENGTH,
+  SLUG_MAX_LENGTH,
+  SLUG_PATTERN,
+  slugRejectionReason,
+} from '../../config/reserved-slugs.js'
 
 const registerSchema = z.object({
-  slug: z.string().min(3).max(63).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens'),
+  // Shape is checked here for a fast 400; `slugRejectionReason` re-runs the full
+  // rule set (reserved names, punycode prefix) inside the service, which is the
+  // authoritative guard for every caller.
+  slug: z
+    .string()
+    .min(SLUG_MIN_LENGTH)
+    .max(SLUG_MAX_LENGTH)
+    .regex(SLUG_PATTERN, 'Slug must be lowercase letters, numbers, and inner hyphens only')
+    .refine((s) => slugRejectionReason(s) === null, (s) => ({
+      message: slugRejectionReason(s) ?? 'Invalid slug',
+    })),
   name: z.string().min(2).max(255),
 })
 
