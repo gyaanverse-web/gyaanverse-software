@@ -1,10 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   assertWithinLimit,
   assertHasFeature,
   isWithinLimit,
   hasFeature,
+  resolveEntitlements,
 } from '@modules/billing/billing.service.js'
+import { setPlatformSetting, __clearPlatformCache } from '@modules/platform/platform.service.js'
 import { PLANS } from '@config/plans.js'
 import {
   createMembership,
@@ -14,6 +16,25 @@ import {
   seedTenantWithUsers,
   createTestTenant,
 } from '../../helpers/fixtures.js'
+
+/**
+ * Every assertion below is about what happens WHEN BILLING IS ON, which is not
+ * the platform default — `billing_enabled` defaults to false so that the MVP
+ * ships unmetered. Without this the whole file passes vacuously: the assert
+ * helpers short-circuit before they ever count anything, and each
+ * `.rejects.toMatchObject` fails with "resolved undefined instead of rejecting".
+ *
+ * The cache clear matters as much as the write. `platform.service` memoises for
+ * 15s, which is far longer than a test file takes to run, so a suite that only
+ * inserted the row would read whatever the previous file left behind.
+ */
+beforeEach(async () => {
+  await setPlatformSetting('billing_enabled', true, SYSTEM_ACTOR)
+  __clearPlatformCache()
+})
+
+/** `platform_settings.updated_by` has no FK, so a sentinel is fine here. */
+const SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000'
 
 describe('assertWithinLimit — students', () => {
   it('allows when under the plan limit', async () => {
@@ -182,5 +203,54 @@ describe('mocks_per_month limit', () => {
       })
     }
     await expect(assertWithinLimit(tenant.id, 'mocks_per_month')).resolves.toBeUndefined()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The other half of the switch: what the resolver answers with billing OFF.
+//
+// These override the file-level `beforeEach`, and they are the tests that would
+// have caught a regression in the MVP posture — every case above is about
+// enforcement, so all of them stay green if the switch silently stops working.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('billing disabled', () => {
+  beforeEach(async () => {
+    await setPlatformSetting('billing_enabled', false, SYSTEM_ACTOR)
+    __clearPlatformCache()
+  })
+
+  it('enforces no limit, however far past the cap the tenant is', async () => {
+    const { tenant } = await seedTenantWithUsers('free') // students limit: 30
+    for (let i = 0; i < PLANS.free.limits.students; i++) {
+      const u = await createTestUser({ role: 'student' })
+      await createMembership({ userId: u.id, tenantId: tenant.id, role: 'student' })
+    }
+
+    await expect(assertWithinLimit(tenant.id, 'students')).resolves.toBeUndefined()
+  })
+
+  it('gates no feature, on any plan', async () => {
+    const free = await createTestTenant({ plan: 'free' })
+
+    await expect(assertHasFeature(free.id, 'custom_branding')).resolves.toBeUndefined()
+    await expect(assertHasFeature(free.id, 'api_access')).resolves.toBeUndefined()
+    expect(await hasFeature(free.id, 'public_mocks')).toBe(true)
+  })
+
+  it("leaves the tenant's stored plan alone, so enabling billing restores it", async () => {
+    const tenant = await createTestTenant({ plan: 'growth' })
+
+    const off = await resolveEntitlements(tenant.id)
+    expect(off.billingEnabled).toBe(false)
+    expect(off.limits.students).toBe(99999)
+
+    await setPlatformSetting('billing_enabled', true, SYSTEM_ACTOR)
+    __clearPlatformCache()
+
+    const on = await resolveEntitlements(tenant.id)
+    expect(on.billingEnabled).toBe(true)
+    expect(on.plan.name).toBe('growth')
+    expect(on.limits.students).toBe(PLANS.growth.limits.students)
   })
 })

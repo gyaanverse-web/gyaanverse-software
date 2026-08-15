@@ -10,11 +10,92 @@ import { classes } from '../class/class.schema.js'
 import { exams } from '../exam/exam.schema.js'
 import { evaluationJobs } from '../evaluation/evaluation.schema.js'
 import { subscriptions, invoices } from './billing.schema.js'
+import { isBillingEnabled } from '../platform/platform.service.js'
 
 async function resolvePlanName(tenantId: string): Promise<PlanName> {
   const [row] = await db.select({ plan: tenants.plan }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)
   if (!row) throw Errors.NOT_FOUND('Tenant')
   return row.plan as PlanName
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The entitlement resolver.
+//
+// The ONE question the rest of the codebase is allowed to ask about what a
+// coaching may do. Every enforcement point — eleven of them, each a single
+// `await` at the top of a service function — reads its answer from here and
+// nothing else. That indirection is the whole design: to change what a tenant
+// can do you change what this function ANSWERS, never who asks it. No call site
+// has an `if (billingEnabled)` in it, and none should ever grow one.
+//
+// Today it composes two inputs:
+//
+//   1. The platform switch (`billing_enabled`) — global, operator-owned.
+//   2. `tenants.plan` → the static matrix in `config/plans.ts`.
+//
+// A third is expected and has a deliberate seam left for it: a
+// `tenant_feature_overrides` row, layered on top of the plan, for the
+// "give this one coaching custom branding" case. When it lands it goes in
+// `resolveEntitlements` and nowhere else, and no call site changes then either.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The value every limit reports while billing is off.
+ *
+ * 99999 rather than `Infinity` for two reasons: `JSON.stringify(Infinity)` is
+ * `null`, which would arrive at the browser as a missing limit; and the `pro`
+ * plan already uses this number, so the frontend's existing `fmtLimit` renders
+ * it as "Unlimited" with no new client-side special case.
+ *
+ * It is a DISPLAY value only. Enforcement does not compare against it — the
+ * assert helpers below return early when billing is off, so a coaching is never
+ * one row away from being blocked by a number that was meant to mean "no cap".
+ */
+const UNMETERED = 99999
+
+export interface Entitlements {
+  /** Is the billing product live at all? False during MVP. */
+  billingEnabled: boolean
+  plan: { name: PlanName; label: string; price_inr: number }
+  features: PlanFeatures
+  limits: PlanLimits
+}
+
+export async function resolveEntitlements(tenantId: string): Promise<Entitlements> {
+  const billingEnabled = await isBillingEnabled()
+
+  if (!billingEnabled) {
+    // Note what is NOT done here: `tenants.plan` is not read, not reset, and not
+    // written. Whatever plan a coaching is on is preserved untouched, so turning
+    // billing on later restores the exact matrix it would have had — rather than
+    // dropping everyone to `free` and generating a wave of support tickets on
+    // launch day.
+    return {
+      billingEnabled: false,
+      plan: { name: 'free', label: 'Unlimited', price_inr: 0 },
+      features: {
+        analytics: true,
+        public_mocks: true,
+        custom_branding: true,
+        api_access: true,
+      },
+      limits: {
+        students: UNMETERED,
+        mocks_per_month: UNMETERED,
+        ai_evaluations: UNMETERED,
+        teachers: UNMETERED,
+        classes: UNMETERED,
+      },
+    }
+  }
+
+  const plan = PLANS[await resolvePlanName(tenantId)]
+  return {
+    billingEnabled: true,
+    plan: { name: plan.name, label: plan.label, price_inr: plan.price_inr },
+    features: plan.features,
+    limits: plan.limits,
+  }
 }
 
 async function countUsage(tenantId: string, limit: keyof PlanLimits): Promise<number> {
@@ -74,8 +155,8 @@ export async function getPlan(tenantId: string) {
 }
 
 export async function hasFeature(tenantId: string, feature: keyof PlanFeatures): Promise<boolean> {
-  const name = await resolvePlanName(tenantId)
-  return PLANS[name].features[feature]
+  const { features } = await resolveEntitlements(tenantId)
+  return features[feature]
 }
 
 /**
@@ -89,8 +170,8 @@ export async function getLimitUsage(
   tenantId: string,
   limit: keyof PlanLimits,
 ): Promise<{ current: number; max: number; within: boolean }> {
-  const name = await resolvePlanName(tenantId)
-  const max = PLANS[name].limits[limit]
+  const { limits } = await resolveEntitlements(tenantId)
+  const max = limits[limit]
   const current = await countUsage(tenantId, limit)
   return { current, max, within: current < max }
 }
@@ -100,18 +181,30 @@ export async function isWithinLimit(tenantId: string, limit: keyof PlanLimits): 
   return within
 }
 
+/**
+ * While billing is off these two return without running a single query.
+ *
+ * That is worth more than the correctness it buys. `assertWithinLimit` is on the
+ * hot path of member creation, class creation, invites and paper submission, and
+ * `countUsage` is a `COUNT(*)` over a tenant's memberships or exams each time —
+ * so short-circuiting removes the entire cost of a feature nobody is using yet,
+ * instead of paying for it to compute a number that is then compared against
+ * 99999 and discarded.
+ */
 export async function assertWithinLimit(tenantId: string, limit: keyof PlanLimits): Promise<void> {
+  if (!(await isBillingEnabled())) return
   const within = await isWithinLimit(tenantId, limit)
   if (!within) throw Errors.PLAN_LIMIT(limit.replace(/_/g, ' '))
 }
 
 export async function assertHasFeature(tenantId: string, feature: keyof PlanFeatures): Promise<void> {
+  if (!(await isBillingEnabled())) return
   const has = await hasFeature(tenantId, feature)
   if (!has) throw Errors.FEATURE_GATED(feature.replace(/_/g, ' '))
 }
 
 export async function getEntitlements(tenantId: string) {
-  return getPlan(tenantId)
+  return resolveEntitlements(tenantId)
 }
 
 export async function getSubscription(tenantId: string) {
@@ -132,8 +225,7 @@ export async function getInvoices(tenantId: string) {
 }
 
 export async function getUsageSummary(tenantId: string) {
-  const planName = await resolvePlanName(tenantId)
-  const plan = PLANS[planName]
+  const plan = await resolveEntitlements(tenantId)
   const subscription = await getSubscription(tenantId)
 
   const limits = Object.keys(plan.limits) as (keyof PlanLimits)[]

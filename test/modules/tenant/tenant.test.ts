@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '@shared/db.js'
-import { tenants, tenantSettings } from '@modules/tenant/tenant.schema.js'
+import { tenants } from '@modules/tenant/tenant.schema.js'
 import { memberships } from '@modules/membership/membership.schema.js'
 import { users } from '@modules/auth/auth.schema.js'
 import { classes, classMembers } from '@modules/class/class.schema.js'
@@ -21,19 +21,12 @@ import {
 } from '../../helpers/fixtures.js'
 
 describe('registerCoaching', () => {
-  it('creates tenant + settings + owner membership + updates user role atomically', async () => {
+  it('creates tenant + owner membership + updates user role atomically', async () => {
     const owner = await createTestUser({ role: 'student', emailVerified: true })
     const result = await registerCoaching(owner.id, { slug: 'newcoaching', name: 'New Coaching' })
 
     expect(result.tenant.slug).toBe('newcoaching')
     expect(result.tenant.ownerId).toBe(owner.id)
-
-    // Settings row created
-    const [settings] = await db
-      .select()
-      .from(tenantSettings)
-      .where(eq(tenantSettings.tenantId, result.tenant.id))
-    expect(settings).toBeDefined()
 
     // Membership row created with coaching_owner role
     const [m] = await db
@@ -111,7 +104,7 @@ describe('deleteCoaching', () => {
     })
   })
 
-  it('cascades classes, class members, memberships, settings, and resets users', async () => {
+  it('cascades classes, class members, memberships, and resets users', async () => {
     const { tenant, owner, teacher, student } = await seedTenantWithUsers()
 
     // Add some real content to verify cascades
@@ -123,13 +116,6 @@ describe('deleteCoaching', () => {
     // Tenant gone
     const tenantRows = await db.select().from(tenants).where(eq(tenants.id, tenant.id))
     expect(tenantRows).toHaveLength(0)
-
-    // Settings gone
-    const settingsRows = await db
-      .select()
-      .from(tenantSettings)
-      .where(eq(tenantSettings.tenantId, tenant.id))
-    expect(settingsRows).toHaveLength(0)
 
     // Memberships gone
     const membershipRows = await db

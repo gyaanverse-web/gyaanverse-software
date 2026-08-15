@@ -148,6 +148,20 @@
       "when": 1786551288480,
       "tag": "0020_evaluation_backstop_review",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786793482327,
+      "tag": "0021_platform_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786826611218,
+      "tag": "0022_drop_tenant_settings",
+      "breakpoints": true
     }
   ]
 }

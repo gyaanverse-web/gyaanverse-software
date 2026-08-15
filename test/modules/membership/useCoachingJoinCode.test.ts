@@ -12,6 +12,7 @@ import {
   createTestUser,
   createTestCoachingJoinCode,
   seedTenantWithUsers,
+  setBillingEnabled,
   createMembership,
 } from '../../helpers/fixtures.js'
 
@@ -116,6 +117,9 @@ describe('useCoachingJoinCode', () => {
   })
 
   it('CRITICAL: enforces students plan limit', async () => {
+    // Plan limits only bind while billing is on; it defaults off (MVP).
+    await setBillingEnabled(true)
+
     // Fill the tenant to its free-plan student cap (30), then try to join.
     const { tenant, owner } = await seedTenantWithUsers('free')
     const limit = PLANS.free.limits.students // 30, seed already has 1

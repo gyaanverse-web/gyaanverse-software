@@ -1,4 +1,5 @@
 export {
+  resolveEntitlements,
   getPlan,
   hasFeature,
   isWithinLimit,
@@ -11,3 +12,5 @@ export {
   getUsageSummary,
   handleSubscriptionWebhook,
 } from './billing.service.js'
+export type { Entitlements } from './billing.service.js'
+export { requireBillingEnabled } from './billing.guard.js'

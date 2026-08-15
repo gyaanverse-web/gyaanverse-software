@@ -5,6 +5,7 @@ import { exams, examStatusHistory } from '@modules/exam/exam.schema.js'
 import { submitForReview, addQuestion, linkExamToClass } from '@modules/exam/exam.service.js'
 import {
   seedTenantWithUsers, createTestExam, createTestClass, createTestUser, createMembership,
+  setBillingEnabled,
 } from '../../helpers/fixtures.js'
 
 // submitForReview replaces the old self-publish. The same gates that used to
@@ -94,6 +95,9 @@ describe('submitForReview — class assignment gate', () => {
   })
 
   it('gates public submission behind the public_mocks feature (free plan)', async () => {
+    // Feature gates only exist while billing is on; it defaults off (MVP).
+    await setBillingEnabled(true)
+
     // Free plan lacks public_mocks; a public exam can't enter review.
     const { tenant, teacher } = await seedTenantWithUsers('free')
     const exam = await createTestExam({
@@ -162,6 +166,9 @@ describe('submitForReview — monthly mock quota', () => {
   }
 
   it('charges the quota on submit, not on draft creation', async () => {
+    // The quota is only charged while billing is on; it defaults off (MVP).
+    await setBillingEnabled(true)
+
     const { tenant, teacher } = await seedTenantWithUsers('free')
     const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
 

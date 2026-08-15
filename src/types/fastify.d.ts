@@ -41,4 +41,24 @@ declare module 'fastify' {
      */
     sessionCreatedAt?: Date
   }
+
+  interface FastifyContextConfig {
+    /**
+     * Requests the unparsed request body, for signature verification.
+     *
+     * ⚠️ **Declared but NOT implemented.** Nothing acts on this flag: no
+     * `fastify-raw-body` (or equivalent) plugin is registered in `app.ts`, so
+     * `req.rawBody` is always `undefined` and the one route that sets this —
+     * `POST /billing/webhook` — silently falls back to
+     * `JSON.stringify(req.body)`. That re-serialisation will not reproduce
+     * Razorpay's bytes (key order, spacing, unicode escaping), so the HMAC
+     * comparison fails and every webhook is rejected with a 400.
+     *
+     * Harmless today: the route answers 404 while `billing_enabled` is off. It
+     * becomes a launch-blocking bug the moment that switch is flipped, and it
+     * will present as "Razorpay says delivery failed" rather than as anything
+     * pointing at this line. Register a raw-body plugin before enabling billing.
+     */
+    rawBody?: boolean
+  }
 }

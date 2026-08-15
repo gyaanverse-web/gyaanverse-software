@@ -5,7 +5,7 @@
 
 import { eq } from 'drizzle-orm'
 import { db } from '@shared/db.js'
-import { tenants, tenantSettings } from '@modules/tenant/tenant.schema.js'
+import { tenants } from '@modules/tenant/tenant.schema.js'
 import { users } from '@modules/auth/auth.schema.js'
 import { memberships, coachingJoinCodes } from '@modules/membership/membership.schema.js'
 import { classes, classMembers } from '@modules/class/class.schema.js'
@@ -13,6 +13,7 @@ import { exams, questions, examClasses } from '@modules/exam/exam.schema.js'
 import { subjects } from '@modules/question-bank/question-bank.schema.js'
 import { examSessions, sessionAnswers } from '@modules/exam-session/exam-session.schema.js'
 import { evaluationJobs, questionResults } from '@modules/evaluation/evaluation.schema.js'
+import { setPlatformSetting, __clearPlatformCache } from '@modules/platform/platform.service.js'
 import { examPurchases, payments } from '@modules/payment/payment.schema.js'
 import { invites } from '@modules/invite/invite.schema.js'
 import type { PlanName } from '@config/plans.js'
@@ -47,7 +48,6 @@ export async function createTestTenant(overrides: {
       plan: overrides.plan ?? 'free',
     })
     .returning()
-  await db.insert(tenantSettings).values({ tenantId: tenant.id })
 
   // Backfill the owner's tenantId pointer; matches what registerCoaching does.
   await db.update(users).set({ tenantId: tenant.id }).where(eq(users.id, ownerId))
@@ -409,4 +409,30 @@ export async function seedTenantWithUsers(plan: PlanName = 'free') {
   await createMembership({ userId: student.id, tenantId: tenant.id, role: 'student' })
 
   return { tenant, owner, teacher, student }
+}
+
+// ── Platform switches ─────────────────────────────────────────────────────
+
+/**
+ * Turn the platform billing switch on (or off) for the current test.
+ *
+ * `billing_enabled` defaults to FALSE — the MVP posture — and while it is off
+ * `assertWithinLimit` / `assertHasFeature` return immediately without counting
+ * anything. So any test asserting that a quota or feature gate *fires* must call
+ * this first, or it passes vacuously: the expectation becomes
+ * "resolved undefined instead of rejecting", which reads like a broken limit
+ * rather than a suspended one.
+ *
+ * Clears the service's 15s memo as well as writing the row — that cache easily
+ * outlives a whole test file, so a suite that only wrote the row would inherit
+ * whatever the previously-run file left in memory.
+ *
+ * @example
+ * describe('some quota', () => {
+ *   beforeEach(() => setBillingEnabled(true))
+ * })
+ */
+export async function setBillingEnabled(enabled: boolean): Promise<void> {
+  await setPlatformSetting('billing_enabled', enabled, '00000000-0000-0000-0000-000000000000')
+  __clearPlatformCache()
 }

@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, text, timestamp } from 'drizzle-orm/pg-core'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 // auth.schema imports tenants; we import users via lazy ref callback to complete the
 // circular FK (tenants.ownerId → users.id) without a hard circular import at load time.
@@ -16,8 +16,8 @@ export const tenants = pgTable('tenants', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
-export const tenantSettings = pgTable('tenant_settings', {
-  tenantId: uuid('tenant_id').primaryKey().references(() => tenants.id),
-  allowPublicMocks: boolean('allow_public_mocks').notNull().default(false),
-  customDomain: text('custom_domain'),
-})
+// NOTE: `tenant_settings` was dropped in migration 0022. It held exactly two
+// columns — `allow_public_mocks` and `custom_domain` — that were written by an
+// owner-facing form and read by nothing. What actually gates public exams is the
+// plan feature `public_mocks`; what actually resolves a tenant is the slug
+// wildcard. Do not reintroduce a per-tenant mirror of either.

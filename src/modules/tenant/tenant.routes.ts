@@ -12,11 +12,12 @@ import {
   listMembers,
   listTeachersWithWorkload,
   removeMember,
-  updateSettings,
   updateTenant,
   deleteCoaching,
   upgradePlan,
 } from './tenant.service.js'
+import { resolveEntitlements } from '../billing/billing.service.js'
+import { requireBillingEnabled } from '../billing/billing.guard.js'
 import {
   SLUG_MIN_LENGTH,
   SLUG_MAX_LENGTH,
@@ -45,11 +46,6 @@ const addTeacherSchema = z.object({
 
 const joinSchema = z.object({
   tenantId: z.string().uuid('Invalid tenant ID'),
-})
-
-const settingsSchema = z.object({
-  allowPublicMocks: z.boolean().optional(),
-  customDomain: z.string().nullable().optional(),
 })
 
 const updateTenantSchema = z.object({
@@ -112,7 +108,17 @@ export async function tenantRoutes(app: FastifyInstance) {
       const { id: userId } = req.user!
       const result = await getMyTenant(userId)
       if (!result) throw Errors.NOT_FOUND('Coaching')
-      reply.send({ tenant: result.tenant, membershipRole: result.membershipRole })
+
+      // Entitlements ride along with the tenant rather than living on their own
+      // endpoint. Every screen already fetches this — it is one of the two calls
+      // behind `lib/sessionStore` on the frontend — so the alternative was a
+      // third request on every mount, with its own cache and its own TTL, to
+      // answer a question that is a property of exactly this tenant.
+      //
+      // It also removes the reason the frontend had a copy of the plan matrix:
+      // limits now arrive as data, so the client cannot drift from plans.ts.
+      const entitlements = await resolveEntitlements(result.tenant.id)
+      reply.send({ tenant: result.tenant, membershipRole: result.membershipRole, entitlements })
     },
   )
 
@@ -205,6 +211,13 @@ export async function tenantRoutes(app: FastifyInstance) {
   )
 
   // Change plan — owner only, no payment required (payment integration skipped for now)
+  //
+  // Gated on `billing_enabled` alongside the billing routes proper. It is not a
+  // billing route by file, but it is the one endpoint that mutates the input the
+  // entitlement resolver reads, and it currently grants any plan for free. With
+  // billing off the resolver ignores `tenants.plan` entirely, so leaving this
+  // open would let an owner change a value that does nothing — and then quietly
+  // takes effect the moment an operator flips the switch.
   app.patch(
     '/tenants/:id/plan',
     {
@@ -226,7 +239,7 @@ export async function tenantRoutes(app: FastifyInstance) {
           },
         },
       },
-      preHandler: [authenticate],
+      preHandler: [requireBillingEnabled, authenticate],
     },
     async (req, reply) => {
       const parsed = upgradePlanSchema.safeParse(req.body)
@@ -366,32 +379,11 @@ export async function tenantRoutes(app: FastifyInstance) {
     },
   )
 
-  // Update coaching settings — coaching_owner only
-  app.patch(
-    '/tenant/settings',
-    {
-      schema: {
-        tags: ['Tenants'],
-        summary: 'Update coaching settings',
-        description: 'Updates tenant-level settings. `allowPublicMocks` requires Starter+ plan. `customDomain` requires Pro plan.',
-        security: AUTH,
-        body: {
-          type: 'object',
-          properties: {
-            allowPublicMocks: { type: 'boolean' },
-            customDomain: { type: 'string', nullable: true },
-          },
-        },
-      },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')],
-    },
-    async (req, reply) => {
-      const parsed = settingsSchema.safeParse(req.body)
-      if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
-
-      const tenant = req.tenant!
-      await updateSettings(tenant.id, parsed.data)
-      reply.send({ success: true })
-    },
-  )
+  // NOTE: there is no `PATCH /tenant/settings`. It carried exactly two fields —
+  // `allowPublicMocks` and `customDomain` — and both wrote columns that nothing in
+  // this codebase ever read. Public-exam publishing is gated on the PLAN FEATURE
+  // `public_mocks` (see `assertHasFeature` in exam.service / exam.generation.service),
+  // never on the tenant flag, and tenant resolution is the `*.gyaanverse.com` slug
+  // wildcard, never a custom domain. The route, the `tenant_settings` table and the
+  // owner-facing form that fed them were removed together in migration 0022.
 }

@@ -15,6 +15,7 @@ import { evaluationInternalRoutes } from './modules/evaluation/evaluation.intern
 import { storageRoutes } from './modules/storage/storage.routes.js'
 import { reportRoutes } from './modules/report/report.routes.js'
 import { examReviewRoutes } from './modules/exam-review/exam-review.routes.js'
+import { platformRoutes } from './modules/platform/platform.routes.js'
 import { registerBullBoard } from './config/bull-board.js'
 import { registerApiDocs } from './config/docs.js'
 import cors from '@fastify/cors'
@@ -181,6 +182,7 @@ export async function buildApp() {
   await app.register(storageRoutes)
   await app.register(reportRoutes)
   await app.register(examReviewRoutes)
+  await app.register(platformRoutes)
 
   return app
 }

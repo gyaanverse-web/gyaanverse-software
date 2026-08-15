@@ -9,12 +9,6 @@ export interface Tenant {
   createdAt: Date
 }
 
-export interface TenantSettings {
-  tenantId: string
-  allowPublicMocks: boolean
-  customDomain: string | null
-}
-
 export interface Member {
   userId: string
   role: string

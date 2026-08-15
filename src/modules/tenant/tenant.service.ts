@@ -1,12 +1,12 @@
 import { eq, and, inArray, sql } from 'drizzle-orm'
 import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
-import { tenants, tenantSettings } from './tenant.schema.js'
+import { tenants } from './tenant.schema.js'
 import { memberships, coachingJoinCodes } from '../membership/membership.schema.js'
 import { classes, classMembers, joinCodes } from '../class/class.schema.js'
 import { exams } from '../exam/exam.schema.js'
 import { users } from '../auth/auth.schema.js'
-import { assertWithinLimit, assertHasFeature } from '../billing/billing.service.js'
+import { assertWithinLimit } from '../billing/billing.service.js'
 import { type PlanName } from '../../config/plans.js'
 import { slugRejectionReason, isReservedSlug } from '../../config/reserved-slugs.js'
 import type { Tenant } from './tenant.types.js'
@@ -46,18 +46,8 @@ export async function createTenant(data: { slug: string; name: string; ownerId: 
 
   return db.transaction(async (tx) => {
     const [tenant] = await tx.insert(tenants).values({ slug, name: data.name, ownerId: data.ownerId }).returning()
-    await tx.insert(tenantSettings).values({ tenantId: tenant.id })
     return toTenant(tenant)
   })
-}
-
-export async function updateSettings(
-  tenantId: string,
-  data: { allowPublicMocks?: boolean; customDomain?: string | null },
-): Promise<void> {
-  if (data.allowPublicMocks === true) await assertHasFeature(tenantId, 'public_mocks')
-  if (data.customDomain != null) await assertHasFeature(tenantId, 'custom_branding')
-  await db.update(tenantSettings).set(data).where(eq(tenantSettings.tenantId, tenantId))
 }
 
 // ── Register a new coaching institute ──────────────────────────────────────
@@ -88,7 +78,6 @@ export async function registerCoaching(ownerId: string, data: { slug: string; na
 
   return db.transaction(async (tx) => {
     const [tenant] = await tx.insert(tenants).values({ slug, name: data.name, ownerId }).returning()
-    await tx.insert(tenantSettings).values({ tenantId: tenant.id })
     await tx.insert(memberships).values({ userId: ownerId, tenantId: tenant.id, role: 'coaching_owner' })
     await tx.update(users).set({ role: 'coaching_owner', tenantId: tenant.id }).where(eq(users.id, ownerId))
     return { tenant: toTenant(tenant) }
@@ -306,7 +295,6 @@ export async function deleteCoaching(tenantId: string, requesterId: string): Pro
     await tx.delete(classes).where(eq(classes.tenantId, tenantId))
     await tx.delete(memberships).where(eq(memberships.tenantId, tenantId))
     await tx.delete(coachingJoinCodes).where(eq(coachingJoinCodes.tenantId, tenantId))
-    await tx.delete(tenantSettings).where(eq(tenantSettings.tenantId, tenantId))
     // invites cascade automatically (onDelete: 'cascade' on invites.tenantId)
     await tx.delete(tenants).where(eq(tenants.id, tenantId))
   })

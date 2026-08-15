@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { authenticate, requireTenantRole } from '@middleware/auth.middleware.js'
 import { tenantMiddleware } from '@middleware/tenant.middleware.js'
@@ -314,42 +314,36 @@ export async function notificationRoutes(app: FastifyInstance) {
   })
 
   // ── Preferences ───────────────────────────────────────────────────────────
+  //
+  // Registered on BOTH the tenant and the bare path, like every other route in
+  // this file, because a preference belongs to a USER and not to a coaching —
+  // `getPreferences` keys on `user.id` alone. The tenant-only registration this
+  // replaces meant a student who had not joined a coaching (a state the product
+  // supports throughout) got a 403 from their own preferences screen: the page
+  // swallowed it, drew every switch ON, and then 403'd on each click.
 
-  app.get('/tenant/notifications/preferences', {
-    schema: {
-      tags: ['Notifications'],
-      summary: 'Get notification preferences',
-      description: 'Returns the user\'s notification channel preferences (email, SMS, in-app) for each notification type.',
-      security: AUTH,
+  const prefsBody = {
+    type: 'object',
+    properties: {
+      emailEnabled: { type: 'boolean' },
+      smsEnabled: { type: 'boolean' },
+      inAppEnabled: { type: 'boolean' },
     },
-    preHandler: tenantMember,
-  }, async (req, reply) => {
+  } as const
+
+  const prefsParams = {
+    type: 'object',
+    required: ['type'],
+    properties: { type: { type: 'string', description: 'Notification type key' } },
+  } as const
+
+  const getPrefsHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     const user = req.user!
     const prefs = await getPreferences(user.id)
     reply.send({ preferences: prefs })
-  })
+  }
 
-  app.patch('/tenant/notifications/preferences/:type', {
-    schema: {
-      tags: ['Notifications'],
-      summary: 'Update notification preferences for a type',
-      security: AUTH,
-      params: {
-        type: 'object',
-        required: ['type'],
-        properties: { type: { type: 'string', description: 'Notification type key' } },
-      },
-      body: {
-        type: 'object',
-        properties: {
-          emailEnabled: { type: 'boolean' },
-          smsEnabled: { type: 'boolean' },
-          inAppEnabled: { type: 'boolean' },
-        },
-      },
-    },
-    preHandler: tenantMember,
-  }, async (req, reply) => {
+  const setPrefsHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     const user = req.user!
     const { type } = req.params as { type: string }
 
@@ -363,5 +357,28 @@ export async function notificationRoutes(app: FastifyInstance) {
 
     await upsertPreference(user.id, type as NotificationType, parsed.data)
     reply.send({ ok: true })
-  })
+  }
+
+  for (const prefix of ['', '/tenant'] as const) {
+    app.get(`${prefix}/notifications/preferences`, {
+      schema: {
+        tags: ['Notifications'],
+        summary: 'Get notification preferences',
+        description: 'Returns the user\'s notification channel preferences (email, SMS, in-app) for each notification type. User-scoped — no coaching membership required.',
+        security: AUTH,
+      },
+      preHandler: authOnly,
+    }, getPrefsHandler)
+
+    app.patch(`${prefix}/notifications/preferences/:type`, {
+      schema: {
+        tags: ['Notifications'],
+        summary: 'Update notification preferences for a type',
+        security: AUTH,
+        params: prefsParams,
+        body: prefsBody,
+      },
+      preHandler: authOnly,
+    }, setPrefsHandler)
+  }
 }

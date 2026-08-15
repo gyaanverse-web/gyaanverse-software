@@ -2,7 +2,6 @@ export {
   getTenantBySlug,
   getTenantById,
   createTenant,
-  updateSettings,
   registerCoaching,
   addTeacher,
   joinAsStudent,
