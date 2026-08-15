@@ -37,10 +37,10 @@ async function sendVerificationEmail(userEmail: string, token: string): Promise<
   await sendWithFallback(
     'EMAIL VERIFICATION',
     userEmail,
-    'Verify your Gyanverse email',
+    'Verify your Gyaanverse email',
     authActionEmail({
       heading: 'Confirm your email address',
-      intro: 'You created a Gyanverse account with this address. Confirm it to finish signing up.',
+      intro: 'You created a Gyaanverse account with this address. Confirm it to finish signing up.',
       ctaLabel: 'Verify email address',
       url,
       expiry: '1 hour',
@@ -54,10 +54,10 @@ async function sendPasswordResetEmail(userEmail: string, token: string): Promise
   await sendWithFallback(
     'PASSWORD RESET',
     userEmail,
-    'Reset your Gyanverse password',
+    'Reset your Gyaanverse password',
     authActionEmail({
       heading: 'Reset your password',
-      intro: 'We received a request to set a new password for your Gyanverse account.',
+      intro: 'We received a request to set a new password for your Gyaanverse account.',
       ctaLabel: 'Choose a new password',
       url,
       expiry: '1 hour',
@@ -123,7 +123,7 @@ export const auth = betterAuth({
     },
     // Share the session cookie across all tenant subdomains.
     //   dev:  Domain=lvh.me        → cookie is sent to *.lvh.me and lvh.me
-    //   prod: Domain=gyanverse.com → cookie is sent to *.gyanverse.com and gyanverse.com
+    //   prod: Domain=gyaanverse.com → cookie is sent to *.gyaanverse.com and gyaanverse.com
     //
     // Why lvh.me in dev (not localhost)? Chromium treats `localhost` as a public
     // suffix (TLD-like). Per RFC 6265 §5.3 step 5, a Set-Cookie with Domain set
@@ -139,7 +139,7 @@ export const auth = betterAuth({
     // Security note (per Better Auth guidance): this gives every subdomain of the
     // configured root read access to the auth cookie. We control the whole zone
     // (tenant subdomains are all our app), so this is acceptable. If we ever host
-    // an untrusted service at *.gyanverse.com (status pages, partner widgets, etc.)
+    // an untrusted service at *.gyaanverse.com (status pages, partner widgets, etc.)
     // it MUST be moved to a separate domain.
     crossSubDomainCookies: {
       enabled: true,
@@ -238,7 +238,7 @@ export const auth = betterAuth({
       expiresIn: 600, // 10 minutes
       // Auto-create an account on first successful OTP verification
       signUpOnVerification: {
-        getTempEmail: (phone) => `${phone.replace(/\D/g, '')}@phone.gyanverse.app`,
+        getTempEmail: (phone) => `${phone.replace(/\D/g, '')}@phone.gyaanverse.app`,
         getTempName: (phone) => phone,
       },
     }),

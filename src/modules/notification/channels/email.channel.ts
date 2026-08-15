@@ -30,7 +30,7 @@ export interface EmailParams {
 }
 
 export async function sendEmail(params: EmailParams): Promise<void> {
-  const from = params.from ?? `Gyanverse <noreply@${env.APP_DOMAIN}>`
+  const from = params.from ?? `Gyaanverse <noreply@${env.APP_DOMAIN}>`
 
   if (env.NODE_ENV !== 'production') {
     await devTransport.sendMail({

@@ -33,7 +33,7 @@ import { BACKSTOP_AFTER_MS, BACKSTOP_MAX_ATTEMPTS } from './evaluation.retry.js'
 //     are not stuck
 //   • the flagged answers appear in an internal review queue
 //
-// WHO FIXES THEM: **Gyanverse staff, never the coaching's teacher.** That is why
+// WHO FIXES THEM: **Gyaanverse staff, never the coaching's teacher.** That is why
 // the flag lives on an internal-only column and is never sent to any tenant
 // screen. Asking a teacher to "fix the answer the AI couldn't read" would simply
 // be the AI failure made visible again, in politer wording.

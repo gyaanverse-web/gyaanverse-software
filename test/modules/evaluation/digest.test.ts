@@ -160,40 +160,40 @@ describe('getDigestRecipients', () => {
   })
 
   it('resolves super_admins from the live table, ignoring every other role', async () => {
-    await createTestUser({ role: 'super_admin', email: 'ops1@gyanverse.test' })
-    await createTestUser({ role: 'super_admin', email: 'ops2@gyanverse.test' })
+    await createTestUser({ role: 'super_admin', email: 'ops1@gyaanverse.test' })
+    await createTestUser({ role: 'super_admin', email: 'ops2@gyaanverse.test' })
     await seedTenantWithUsers()
 
     expect((await getDigestRecipients()).sort()).toEqual([
-      'ops1@gyanverse.test',
-      'ops2@gyanverse.test',
+      'ops1@gyaanverse.test',
+      'ops2@gyaanverse.test',
     ])
   })
 
   it('ADDS OPS_DIGEST_EMAILS to the operators rather than replacing them', async () => {
     // The trap this guards: pointing the env var at a shared alias must not
     // silently unsubscribe the people who can actually clear the queue.
-    await createTestUser({ role: 'super_admin', email: 'ops1@gyanverse.test' })
-    env.OPS_DIGEST_EMAILS = 'alerts@gyanverse.test, oncall@gyanverse.test'
+    await createTestUser({ role: 'super_admin', email: 'ops1@gyaanverse.test' })
+    env.OPS_DIGEST_EMAILS = 'alerts@gyaanverse.test, oncall@gyaanverse.test'
 
     expect((await getDigestRecipients()).sort()).toEqual([
-      'alerts@gyanverse.test',
-      'oncall@gyanverse.test',
-      'ops1@gyanverse.test',
+      'alerts@gyaanverse.test',
+      'oncall@gyaanverse.test',
+      'ops1@gyaanverse.test',
     ])
   })
 
   it('deduplicates case-insensitively so an operator listed twice is mailed once', async () => {
-    await createTestUser({ role: 'super_admin', email: 'ops1@gyanverse.test' })
-    env.OPS_DIGEST_EMAILS = 'OPS1@GYANVERSE.TEST'
+    await createTestUser({ role: 'super_admin', email: 'ops1@gyaanverse.test' })
+    env.OPS_DIGEST_EMAILS = 'OPS1@GYAANVERSE.TEST'
 
-    expect(await getDigestRecipients()).toEqual(['ops1@gyanverse.test'])
+    expect(await getDigestRecipients()).toEqual(['ops1@gyaanverse.test'])
   })
 })
 
 describe('sendReviewDigest', () => {
   it('sends NOTHING on a clean queue', async () => {
-    await createTestUser({ role: 'super_admin', email: 'ops@gyanverse.test' })
+    await createTestUser({ role: 'super_admin', email: 'ops@gyaanverse.test' })
 
     const result = await sendReviewDigest()
 
@@ -204,8 +204,8 @@ describe('sendReviewDigest', () => {
   it('sends one message per recipient, never one with everyone in `to`', async () => {
     // The payload names other coachings by implication; a recipient list is not
     // something to hand every recipient a copy of.
-    await createTestUser({ role: 'super_admin', email: 'ops1@gyanverse.test' })
-    await createTestUser({ role: 'super_admin', email: 'ops2@gyanverse.test' })
+    await createTestUser({ role: 'super_admin', email: 'ops1@gyaanverse.test' })
+    await createTestUser({ role: 'super_admin', email: 'ops2@gyaanverse.test' })
     await seedFlagged({ flagged: 2 })
 
     const result = await sendReviewDigest()
@@ -214,14 +214,14 @@ describe('sendReviewDigest', () => {
     expect(result.open).toBe(2)
     expect(mockSendEmail).toHaveBeenCalledTimes(2)
     expect(mockSendEmail.mock.calls.map((c) => c[0].to).sort()).toEqual([
-      'ops1@gyanverse.test',
-      'ops2@gyanverse.test',
+      'ops1@gyaanverse.test',
+      'ops2@gyaanverse.test',
     ])
     expect(mockSendEmail.mock.calls[0][0].subject).toContain('2 answers need manual review')
   })
 
   it('links to the review queue and never blames the coaching', async () => {
-    await createTestUser({ role: 'super_admin', email: 'ops@gyanverse.test' })
+    await createTestUser({ role: 'super_admin', email: 'ops@gyaanverse.test' })
     await seedFlagged({ flagged: 1 })
 
     await sendReviewDigest()
@@ -232,7 +232,7 @@ describe('sendReviewDigest', () => {
   })
 
   it('escalates the copy once the head of the queue is over a day old', async () => {
-    await createTestUser({ role: 'super_admin', email: 'ops@gyanverse.test' })
+    await createTestUser({ role: 'super_admin', email: 'ops@gyaanverse.test' })
     await seedFlagged({ flagged: 1, ageMs: 30 * HOUR })
 
     await sendReviewDigest()
@@ -258,13 +258,13 @@ describe('sendReviewDigest', () => {
   it('does not retry the whole send because one address bounced', async () => {
     // Throwing here would make BullMQ re-run the job and deliver the digest a
     // second time to everyone it already reached.
-    await createTestUser({ role: 'super_admin', email: 'good@gyanverse.test' })
-    await createTestUser({ role: 'super_admin', email: 'bad@gyanverse.test' })
+    await createTestUser({ role: 'super_admin', email: 'good@gyaanverse.test' })
+    await createTestUser({ role: 'super_admin', email: 'bad@gyaanverse.test' })
     await seedFlagged({ flagged: 1 })
 
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockSendEmail.mockImplementation(async ({ to }) => {
-      if (to === 'bad@gyanverse.test') throw new Error('550 mailbox unavailable')
+      if (to === 'bad@gyaanverse.test') throw new Error('550 mailbox unavailable')
     })
 
     const result = await sendReviewDigest()
@@ -274,7 +274,7 @@ describe('sendReviewDigest', () => {
   })
 
   it('throws when nobody could be reached, so the job retries', async () => {
-    await createTestUser({ role: 'super_admin', email: 'ops@gyanverse.test' })
+    await createTestUser({ role: 'super_admin', email: 'ops@gyaanverse.test' })
     await seedFlagged({ flagged: 1 })
     mockSendEmail.mockRejectedValue(new Error('Resend error: service unavailable'))
 

@@ -176,7 +176,7 @@ export async function buildApp() {
   await app.register(paymentRoutes)
   await app.register(notificationRoutes)
   await app.register(evaluationRoutes)
-  // Gyanverse platform ops — cross-tenant, super_admin only, hidden from Swagger.
+  // Gyaanverse platform ops — cross-tenant, super_admin only, hidden from Swagger.
   await app.register(evaluationInternalRoutes)
   await app.register(storageRoutes)
   await app.register(reportRoutes)

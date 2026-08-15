@@ -354,7 +354,7 @@ describe('backstop — settling', () => {
 })
 
 describe('publish gate', () => {
-  it('refuses to publish while an answer is with a Gyanverse operator', async () => {
+  it('refuses to publish while an answer is with a Gyaanverse operator', async () => {
     const { tenant, owner, exam, session } = await seedExhausted()
     const [candidate] = await findBackstopCandidates()
     await settleJob(candidate)
@@ -362,12 +362,12 @@ describe('publish gate', () => {
     expect(await countOpenReviewsForExam(exam.id)).toBe(1)
 
     // The exam is fully evaluated — the teacher has their roster and their
-    // marks. Only the last click waits, and it waits on Gyanverse.
+    // marks. Only the last click waits, and it waits on Gyaanverse.
     await db.update(exams).set({ status: 'ready_to_publish' }).where(eq(exams.id, exam.id))
     expect((await sessionRow(session.id)).status).toBe('evaluated')
 
     await expect(publishResults(exam.id, tenant.id, owner.id, 'coaching_owner')).rejects.toThrow(
-      /still being reviewed by Gyanverse/,
+      /still being reviewed by Gyaanverse/,
     )
 
     // And nothing in the refusal says "failed", "error" or "retry".

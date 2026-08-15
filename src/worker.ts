@@ -128,7 +128,7 @@ if (runsGeneral) {
       // The review-queue digest rides this queue rather than getting one of its
       // own: it is an email on a schedule, and this is the process that sends
       // email. It branches first because it carries no `notificationId` — it is
-      // platform-level, addressed to Gyanverse staff, and has no in-app
+      // platform-level, addressed to Gyaanverse staff, and has no in-app
       // counterpart, so the per-user delivery path below would read fields it
       // does not have. See evaluation.digest.ts.
       if (job.name === EVALUATION_DIGEST_JOB) {

@@ -273,7 +273,7 @@ export async function tenantRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Tenants'],
         summary: 'Add a teacher to the coaching',
-        description: 'Looks up a user by phone number and adds them as a teacher. The user must already have a Gyanverse account. Enforces the plan\'s teacher limit.',
+        description: 'Looks up a user by phone number and adds them as a teacher. The user must already have a Gyaanverse account. Enforces the plan\'s teacher limit.',
         security: AUTH,
         body: {
           type: 'object',

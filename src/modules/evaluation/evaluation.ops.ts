@@ -17,7 +17,7 @@ import {
 import { getEvaluationQueue } from './evaluation.service.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WHAT A GYANVERSE OPERATOR SEES, AND THE BUTTON THEY CAN PRESS.
+// WHAT A GYAANVERSE OPERATOR SEES, AND THE BUTTON THEY CAN PRESS.
 //
 // This file has two jobs:
 //   1. `getEvaluationOverview` + `listActionableJobs` — the read-only picture of

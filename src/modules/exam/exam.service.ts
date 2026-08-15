@@ -822,19 +822,19 @@ export async function publishResults(
   // settles the session anyway with a placeholder 0 so this exam is not held
   // hostage — the teacher gets their marks, their roster, their review screen.
   // What it must not do is let that placeholder go out as a real result, so the
-  // last step is held while a Gyanverse operator scores the answer by hand.
+  // last step is held while a Gyaanverse operator scores the answer by hand.
   //
   // Note carefully what this is NOT: the old stall parked the exam in
   // `under_evaluation` with no screen anywhere saying why, and no party
   // responsible for clearing it. This exam is fully evaluated, visible, and
-  // reviewable; only the final click waits, and it waits on Gyanverse, never on
+  // reviewable; only the final click waits, and it waits on Gyaanverse, never on
   // the teacher. The message says so without saying "the AI failed" — which is
   // the whole directive.
   const openReviews = await countOpenReviewsForExam(id)
   if (openReviews > 0)
     throw Errors.VALIDATION(
       `${openReviews} ${openReviews === 1 ? 'answer is' : 'answers are'} still being reviewed by ` +
-        'Gyanverse. Results can be published as soon as that finishes — no action is needed from you.',
+        'Gyaanverse. Results can be published as soon as that finishes — no action is needed from you.',
     )
 
   return transitionExam({

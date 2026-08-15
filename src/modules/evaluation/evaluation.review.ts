@@ -18,11 +18,11 @@ import { users } from '@modules/auth/auth.schema.js'
 //   • summarise them ("is this one bad photo, or is the engine down?")
 //   • let an operator type in the correct score
 //
-// WHO USES IT: Gyanverse staff only. Never the coaching's teacher or owner.
+// WHO USES IT: Gyaanverse staff only. Never the coaching's teacher or owner.
 //
 // WHY NOT THE TEACHER? A "fix the score the AI couldn't produce" button cannot
 // exist without telling the teacher the AI failed — which is exactly the thing
-// the client asked us to hide. Moving that button to Gyanverse staff keeps the
+// the client asked us to hide. Moving that button to Gyaanverse staff keeps the
 // promise on the coaching's side of the wall, and puts the work with the only
 // people who can act on a systemic problem (e.g. "all four coachings are failing
 // on the same OCR error"). Client decision, 2026-08-12.
@@ -40,7 +40,7 @@ import { users } from '@modules/auth/auth.schema.js'
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * How many answers in this exam are still waiting for a Gyanverse operator.
+ * How many answers in this exam are still waiting for a Gyaanverse operator.
  *
  * THIS IS THE PUBLISH GATE. Any number above 0 means at least one student's mark
  * on this paper is still the backstop's placeholder 0. If the teacher were
@@ -83,7 +83,7 @@ export interface ReviewQueueItem {
 /**
  * The review queue itself: every answer the backstop parked, oldest first.
  *
- * It spans ALL coachings on purpose. This is Gyanverse's own to-do list, and
+ * It spans ALL coachings on purpose. This is Gyaanverse's own to-do list, and
  * splitting it per coaching would hide the most useful thing it shows — that one
  * particular coaching's uploads are all failing for the same reason (bad scanner
  * settings, for example).
@@ -208,7 +208,7 @@ export interface OverrideResult {
  *
  * IT ONLY WORKS ON `needs_human` ROWS, on purpose. This is a repair tool for
  * answers the AI could not read — not a general "edit any score" button.
- * Gyanverse staff quietly rewriting a grade the AI produced correctly, for a
+ * Gyaanverse staff quietly rewriting a grade the AI produced correctly, for a
  * coaching that never asked, would be a completely different and much worse
  * product.
  *

@@ -9,10 +9,10 @@ import { findBackstopCandidates } from './evaluation.backstop.js'
 import { getReviewQueueSummary } from './evaluation.review.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// THE DAILY EMAIL THAT TELLS GYANVERSE STAFF THERE IS WORK WAITING.
+// THE DAILY EMAIL THAT TELLS GYAANVERSE STAFF THERE IS WORK WAITING.
 //
 // WHY IT EXISTS
-// Every open review is an answer a Gyanverse operator has to grade by hand, and
+// Every open review is an answer a Gyaanverse operator has to grade by hand, and
 // behind each one is a teacher looking at a publish button they cannot press for
 // a reason we deliberately never explain to them. So the number of open reviews
 // that never goes down is the single most important thing to watch in this whole
@@ -195,8 +195,8 @@ function escapeHtml(value: string): string {
 // from templates/index.ts, on purpose.
 //
 // That wrapper ends with "You're receiving this because you're a member of a
-// coaching on Gyanverse" — which is not just wrong here, it is wrong in a way
-// that matters. This email carries OTHER coachings' data to Gyanverse staff. The
+// coaching on Gyaanverse" — which is not just wrong here, it is wrong in a way
+// that matters. This email carries OTHER coachings' data to Gyaanverse staff. The
 // two audiences should never share a template that could one day be reused for
 // the wrong one.
 function renderDigest(digest: ReviewDigest): { subject: string; html: string } {
@@ -242,7 +242,7 @@ function renderDigest(digest: ReviewDigest): { subject: string; html: string } {
       : ''
 
   return {
-    subject: `[Gyanverse ops] ${digest.open} ${plural} manual review`,
+    subject: `[Gyaanverse ops] ${digest.open} ${plural} manual review`,
     html: `
 <!DOCTYPE html>
 <html>
@@ -252,7 +252,7 @@ function renderDigest(digest: ReviewDigest): { subject: string; html: string } {
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;padding:40px;border:1px solid #e5e7eb;max-width:600px">
         <tr><td>
-          <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#6b7280;letter-spacing:.08em;text-transform:uppercase">Gyanverse platform ops</p>
+          <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#6b7280;letter-spacing:.08em;text-transform:uppercase">Gyaanverse platform ops</p>
           <p style="margin:0 0 20px;font-size:24px;font-weight:700;color:#111">${digest.open} ${plural} manual review</p>
           ${age}
           <p style="margin:0 0 24px;font-size:15px;color:#374151">
@@ -269,7 +269,7 @@ function renderDigest(digest: ReviewDigest): { subject: string; html: string } {
           ${lookahead}
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0">
           <p style="margin:0;font-size:13px;color:#6b7280">
-            You receive this because your account is a Gyanverse platform operator. It is sent only
+            You receive this because your account is a Gyaanverse platform operator. It is sent only
             on days the queue is not empty.
           </p>
         </td></tr>

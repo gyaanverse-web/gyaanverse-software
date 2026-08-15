@@ -138,7 +138,7 @@ async function render(): Promise<void> {
   //
   // The two ends of Phase 6. `pending` is what the next backstop tick will
   // settle (same function the sweep calls, same reasoning as DRIFT above);
-  // `open` is what it already settled and handed to a Gyanverse operator.
+  // `open` is what it already settled and handed to a Gyaanverse operator.
   //
   // Read them together. `pending` climbing means papers are about to be given
   // up on; `open` climbing and not falling means nobody is clearing the review
@@ -237,7 +237,7 @@ async function render(): Promise<void> {
     `    pending    ${backstopPending.length}\tpast N attempts / T hours — next tick settles these`,
   )
   console.log(
-    `    open       ${reviewSummary.open}\tanswer(s) flagged, waiting on a Gyanverse operator`,
+    `    open       ${reviewSummary.open}\tanswer(s) flagged, waiting on a Gyaanverse operator`,
   )
   if (reviewSummary.open > 0) {
     for (const c of reviewSummary.byCode) {

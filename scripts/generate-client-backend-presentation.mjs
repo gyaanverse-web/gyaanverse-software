@@ -2,10 +2,10 @@ import PptxGenJS from 'pptxgenjs'
 
 const pptx = new PptxGenJS()
 pptx.layout = 'LAYOUT_WIDE'
-pptx.author = 'Gyanverse Engineering'
-pptx.company = 'Gyanverse'
+pptx.author = 'Gyaanverse Engineering'
+pptx.company = 'Gyaanverse'
 pptx.subject = 'Backend Architecture and Delivery Plan'
-pptx.title = 'Gyanverse Backend Structure and Target Delivery Plan'
+pptx.title = 'Gyaanverse Backend Structure and Target Delivery Plan'
 pptx.lang = 'en-US'
 pptx.theme = {
   headFontFace: 'Calibri',
@@ -73,7 +73,7 @@ function addHeader(slide, title, subtitle = '') {
   })
 }
 
-function addFooter(slide, text = 'Gyanverse Backend Program') {
+function addFooter(slide, text = 'Gyaanverse Backend Program') {
   slide.addShape(pptx.ShapeType.line, {
     x: page.marginX,
     y: 7.15,
@@ -113,7 +113,7 @@ function addBullets(slide, items, x, y, w, h, size = 18) {
 // Slide 1
 {
   const slide = pptx.addSlide()
-  addHeader(slide, 'Gyanverse Backend Structure', 'How we are building today and how we will hit target outcomes')
+  addHeader(slide, 'Gyaanverse Backend Structure', 'How we are building today and how we will hit target outcomes')
 
   slide.addShape(pptx.ShapeType.roundRect, {
     x: 0.8,
@@ -559,7 +559,7 @@ function addBullets(slide, items, x, y, w, h, size = 18) {
     color: palette.muted,
   })
 
-  addFooter(slide, 'Gyanverse Engineering Team')
+  addFooter(slide, 'Gyaanverse Engineering Team')
 }
 
 await pptx.writeFile({ fileName: '../docs/decks/backend-structure-client-presentation.pptx' })

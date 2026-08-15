@@ -536,7 +536,7 @@ function buildFeedbackPayload(steps: EngineEvaluatedStep[]): AiFeedbackPayload {
 // ── Reading data back out (for the API) ───────────────────────────────────
 
 /**
- * Translate the internal job status into what people outside Gyanverse are
+ * Translate the internal job status into what people outside Gyaanverse are
  * allowed to see. It maps `failed` → `processing` and passes everything else
  * through unchanged.
  *
@@ -549,7 +549,7 @@ function buildFeedbackPayload(steps: EngineEvaluatedStep[]): AiFeedbackPayload {
  * stopped checking for updates and sat on "Pending" forever.
  *
  * The genuinely finished failures collapse the same way on purpose. A job the
- * backstop closes out STAYS at `failed`, with its answers flagged for a Gyanverse
+ * backstop closes out STAYS at `failed`, with its answers flagged for a Gyaanverse
  * operator — so "still being worked on" is the honest reading of a `failed` row,
  * not a white lie.
  *
@@ -587,7 +587,7 @@ export async function getJobStatus(sessionId: string) {
  *
  * A spread is also unsafe in the future tense: the next column anyone adds to the
  * table would start leaking automatically, with nobody noticing. The diagnostic
- * view of a job lives at `/internal/evaluation/*`, for Gyanverse staff only.
+ * view of a job lives at `/internal/evaluation/*`, for Gyaanverse staff only.
  */
 export async function getJobForTenant(jobId: string, tenantId: string) {
   const [job] = await db
@@ -662,14 +662,14 @@ export async function getSessionEvaluation(sessionId: string, studentId: string)
  * Evaluation" panel.
  *
  * IT REPORTS PROGRESS ONLY: how many sessions are done, and how many answers
- * Gyanverse is finishing by hand. No error messages, no error codes, no job ids.
+ * Gyaanverse is finishing by hand. No error messages, no error codes, no job ids.
  *
  * It used to also return every failed job so the teacher could press a retry
  * button. That existed because, back then, a crashed evaluation really would
  * hold an exam in `under_evaluation` forever with nothing anyone could click.
  * The reconciler and the backstop removed that dead end, and with it the reason
  * to ever tell a teacher the AI failed: retrying is now the system's job, and
- * the one case a machine cannot finish goes to Gyanverse staff, not to the
+ * the one case a machine cannot finish goes to Gyaanverse staff, not to the
  * coaching.
  *
  * ⚠️ Adding a failure count back into this response is not a small change — it
@@ -695,7 +695,7 @@ export async function getExamEvaluationProgress(examId: string, tenantId: string
     .from(examSessions)
     .where(eq(examSessions.examId, examId))
 
-  // Answers the backstop parked for a Gyanverse operator.
+  // Answers the backstop parked for a Gyaanverse operator.
   //
   // This is the only number here the teacher can do nothing about, and the only
   // one that keeps `publishResults` locked — so the UI needs it in order to

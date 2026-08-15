@@ -19,7 +19,7 @@ export async function updateProfile(
   userId: string,
   data: z.infer<typeof updateProfileSchema>,
 ) {
-  if (data.email?.endsWith('@phone.gyanverse.app')) {
+  if (data.email?.endsWith('@phone.gyaanverse.app')) {
     throw Errors.VALIDATION('Invalid email address')
   }
 

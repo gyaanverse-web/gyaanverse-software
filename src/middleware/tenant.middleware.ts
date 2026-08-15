@@ -15,13 +15,13 @@ export async function tenantMiddleware(
   req: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
-  // Strip port so sharma.gyanverse.com:3000 resolves the same as sharma.gyanverse.com
+  // Strip port so sharma.gyaanverse.com:3000 resolves the same as sharma.gyaanverse.com
   const host = (req.headers.host ?? '').replace(/:\d+$/, '')
-  const appDomain = process.env.APP_DOMAIN ?? 'gyanverse.com'
+  const appDomain = process.env.APP_DOMAIN ?? 'gyaanverse.com'
 
   let slug: string | undefined
 
-  // 1. Subdomain — works for *.gyanverse.com (prod) and *.lvh.me (dev).
+  // 1. Subdomain — works for *.gyaanverse.com (prod) and *.lvh.me (dev).
   slug =
     extractSubdomainSlug(host, `.${appDomain}`) ??
     extractSubdomainSlug(host, '.lvh.me')

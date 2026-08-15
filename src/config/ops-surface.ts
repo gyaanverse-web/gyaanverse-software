@@ -157,7 +157,7 @@ export async function mountOpsSurface(
         if (verdict.ok) return
 
         if (verdict.status === 401) {
-          reply.header('WWW-Authenticate', `Basic realm="Gyanverse ${opts.name}", charset="UTF-8"`)
+          reply.header('WWW-Authenticate', `Basic realm="Gyaanverse ${opts.name}", charset="UTF-8"`)
           return reply
             .status(401)
             .send({ error: 'UNAUTHORIZED', message: `${opts.name} requires credentials` })

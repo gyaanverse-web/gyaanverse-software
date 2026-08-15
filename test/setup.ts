@@ -27,7 +27,7 @@ const testUrl = process.env.DATABASE_URL_TEST
 if (!testUrl) {
   throw new Error(
     'Refusing to run tests: DATABASE_URL_TEST is not set. ' +
-      'Create a separate Postgres database (e.g. `createdb gyanverse_test`) and set ' +
+      'Create a separate Postgres database (e.g. `createdb gyaanverse_test`) and set ' +
       'DATABASE_URL_TEST in .env.test or your shell environment.',
   )
 }

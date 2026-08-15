@@ -36,7 +36,7 @@ export const env = {
   CLOUDINARY_CLOUD_NAME: requireEnv('CLOUDINARY_CLOUD_NAME'),
   CLOUDINARY_API_KEY: requireEnv('CLOUDINARY_API_KEY'),
   CLOUDINARY_API_SECRET: requireEnv('CLOUDINARY_API_SECRET'),
-  CLOUDINARY_UPLOAD_FOLDER: process.env.CLOUDINARY_UPLOAD_FOLDER ?? 'gyanverse',
+  CLOUDINARY_UPLOAD_FOLDER: process.env.CLOUDINARY_UPLOAD_FOLDER ?? 'gyaanverse',
   STORAGE_MAX_UPLOAD_BYTES: parseInt(process.env.STORAGE_MAX_UPLOAD_BYTES ?? String(10 * 1024 * 1024), 10),
   RESEND_API_KEY: requireEnv('RESEND_API_KEY'),
   MSG91_AUTH_KEY: devOptional('MSG91_AUTH_KEY'),
@@ -117,7 +117,7 @@ export const env = {
   // ── Review-queue digest (Phase 7) ────────────────────────────────────────
   //
   // A screen only helps someone who looks. `open` — answers waiting on a
-  // Gyanverse operator — is the number this whole plan says matters most, and
+  // Gyaanverse operator — is the number this whole plan says matters most, and
   // every one of them is a teacher who cannot press publish. So it gets pushed.
   //
   // Sent only when `open > 0`, deliberately: a daily "all clear" is how a daily

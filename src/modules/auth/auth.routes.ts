@@ -109,7 +109,7 @@ export async function authRoutes(app: FastifyInstance) {
       await throttleBy('pwreset', normalized, 3, 15 * 60)
 
       // Phone-only accounts — silently skip without revealing whether the account exists
-      if (normalized.endsWith('@phone.gyanverse.app')) {
+      if (normalized.endsWith('@phone.gyaanverse.app')) {
         return reply.send(generic)
       }
 

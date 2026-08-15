@@ -421,7 +421,7 @@ if (STUCK) {
   console.log('  Expect, within a tick or two of a running worker:')
   console.log('    · sessions settled `evaluated`, exam reaches ready_to_publish')
   console.log('    · eval:inspect BACKSTOP open = one per answer')
-  console.log('    · publishing the exam refused — "still being reviewed by Gyanverse"')
+  console.log('    · publishing the exam refused — "still being reviewed by Gyaanverse"')
 } else {
   console.log(`  enqueued     ${enqueued} of ${sessionRows.length}`)
   console.log(`  engine calls ~${enqueued * questionIds.length} OCR + ${enqueued * questionIds.length} evaluate`)

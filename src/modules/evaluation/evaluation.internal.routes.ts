@@ -11,7 +11,7 @@ import {
 import { forceRetryJob, getEvaluationOverview, listActionableJobs } from './evaluation.ops.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// `/internal/evaluation/*` — THE API FOR GYANVERSE'S OWN STAFF.
+// `/internal/evaluation/*` — THE API FOR GYAANVERSE'S OWN STAFF.
 //
 // These are the URLs the internal ops panel calls. Three things make this file
 // different from every other route file in the codebase:
@@ -27,7 +27,7 @@ import { forceRetryJob, getEvaluationOverview, listActionableJobs } from './eval
 //      `coaching_owner` in their own tenant and must never reach these routes.
 //
 //   3. **IT IS DELIBERATELY NOT A TEACHER SCREEN.** Answers marked `needs_human`
-//      go to Gyanverse staff, not to the coaching. Showing a teacher a "the AI
+//      go to Gyaanverse staff, not to the coaching. Showing a teacher a "the AI
 //      couldn't read this, please fix it" task is exactly the AI failure the
 //      client asked us to hide. Decision of 2026-08-12.
 //

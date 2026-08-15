@@ -13,11 +13,11 @@ export const swaggerConfig = (): FastifyDynamicSwaggerOptions => ({
   openapi: {
     openapi: '3.0.3',
     info: {
-      title: 'Gyanverse API',
+      title: 'Gyaanverse API',
       description: `
 ## Multi-tenant coaching platform API
 
-Powers Gyanverse — a SaaS platform for coaching institutes.
+Powers Gyaanverse — a SaaS platform for coaching institutes.
 
 ### Authentication
 
@@ -30,7 +30,7 @@ Click **Authorize** (🔒) at the top of this page and paste your token there to
 ### Multi-tenancy
 
 Routes prefixed with \`/tenant/\` require a tenant context resolved from:
-- Subdomain in production: \`sharma.gyanverse.app\`
+- Subdomain in production: \`sharma.gyaanverse.app\`
 - Query param in development: \`?tenant=sharma\`
 
 ### Roles
@@ -49,7 +49,7 @@ never infer a tenant role from the platform role.
 
 | Platform role | Who |
 |------|-----|
-| \`super_admin\` | Gyanverse platform operator, above all coachings. Currently used only for the global question-bank catalog — there is no super-admin portal. |
+| \`super_admin\` | Gyaanverse platform operator, above all coachings. Currently used only for the global question-bank catalog — there is no super-admin portal. |
       `.trim(),
       version: '1.0.0',
     },

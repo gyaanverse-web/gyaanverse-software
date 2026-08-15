@@ -13,7 +13,7 @@ import { env } from './env.js'
 // role requirements and its error shapes to anyone who asked. `/internal/*` was
 // never in it (`hide: true` on each route) and neither was `/queues`, so nothing
 // secret leaked — but everything else did, and none of it was addressed to the
-// public. Coachings integrate with Gyanverse through the frontend, not through
+// public. Coachings integrate with Gyaanverse through the frontend, not through
 // this document; the people who need it are us.
 //
 // So the reader goes through the same gate as the queue dashboard — see

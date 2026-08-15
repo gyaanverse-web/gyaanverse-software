@@ -97,7 +97,7 @@ describe('listSessionsAwaitingReport — accounting for the rest of the roster',
 
   it('CRITICAL: says nothing about WHY a student is waiting', async () => {
     // The whole point. A field that separated "still evaluating" from "held for
-    // a Gyanverse operator" would tell the teacher exactly whose answer the AI
+    // a Gyaanverse operator" would tell the teacher exactly whose answer the AI
     // could not read — the failure visibility Phase 8 removed, one screen along.
     const { tenant, teacher, exam } = await seedExamWithTwoReports()
     const priya = await createTestUser({ role: 'student', tenantId: tenant.id, name: 'Priya Rao' })

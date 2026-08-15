@@ -112,7 +112,7 @@ const listFiltersSchema = z.object({
 // ── Shared route group ────────────────────────────────────────────────────────
 //
 // Registered twice: under `/tenant` for institute content (owner + teacher) and
-// under `/admin` for global Gyanverse content (super_admin). `scopeOf` decides
+// under `/admin` for global Gyaanverse content (super_admin). `scopeOf` decides
 // which pool a write lands in — a tenant UUID, or null for global.
 
 function registerCatalogAndBank(
@@ -384,7 +384,7 @@ export async function questionBankRoutes(app: FastifyInstance) {
     (req) => req.tenant!.id,
   )
 
-  // Global Gyanverse content: super_admin only, no tenant context.
+  // Global Gyaanverse content: super_admin only, no tenant context.
   registerCatalogAndBank(
     app,
     '/admin',

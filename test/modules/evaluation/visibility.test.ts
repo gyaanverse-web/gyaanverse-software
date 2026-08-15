@@ -20,7 +20,7 @@ import {
 // Phase 8 — what the outside world is allowed to learn about a failure.
 //
 // Every other test file in this module asserts that evaluation recovers. These
-// assert that nobody outside Gyanverse is told it ever had to. They are worth
+// assert that nobody outside Gyaanverse is told it ever had to. They are worth
 // having as tests rather than as a convention because the regressions are all
 // one-liners someone would write in good faith: a `...job` spread, an `error`
 // field added back "for debugging", a `failedJobs` count restored to a panel

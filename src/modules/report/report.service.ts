@@ -165,7 +165,7 @@ export async function createReportForSession(sessionId: string): Promise<{ repor
  * `createReportForSession` is idempotent by *early return* — it exists to be
  * called twice by two paths that both want a report to exist, and returning the
  * one that is already there is the right answer for both. That makes it exactly
- * wrong for a correction: a Gyanverse operator scoring a flagged answer by hand
+ * wrong for a correction: a Gyaanverse operator scoring a flagged answer by hand
  * (evaluation.review.ts) changes numbers the report has already frozen, and the
  * early return would leave the student looking at the placeholder forever.
  *
@@ -398,7 +398,7 @@ export async function listReportsForExam(
  * **It deliberately does not say why any given student is here, and the query is
  * built so it cannot.** Two quite different situations produce a missing report:
  * the paper is mid-evaluation, or the Phase 6 backstop flagged an answer and is
- * holding the report until a Gyanverse operator scores it. Returning only the
+ * holding the report until a Gyaanverse operator scores it. Returning only the
  * flagged ones would tell the teacher exactly whose answer the AI could not
  * read — the failure visibility the whole resilience plan removes, re-created
  * one screen further along. So the predicate is the *absence of a report* and

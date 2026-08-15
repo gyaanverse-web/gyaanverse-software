@@ -49,10 +49,10 @@ export type EvaluationFailureClass = 'transient' | 'permanent' | 'needs_human'
  * - `ai`          — the AI graded it and nobody has needed to get involved.
  * - `needs_human` — the backstop wrote a 0 here just so the class could move on.
  *                   That 0 is a placeholder, NOT the student's real mark.
- * - `resolved`    — a Gyanverse staff member has since graded it by hand.
+ * - `resolved`    — a Gyaanverse staff member has since graded it by hand.
  *
  * This is **internal only**. Coaching owners, teachers and students never see
- * this field. The person who reviews these is Gyanverse staff, never the
+ * this field. The person who reviews these is Gyaanverse staff, never the
  * coaching's own teacher.
  */
 export type QuestionReviewStatus = 'ai' | 'needs_human' | 'resolved'

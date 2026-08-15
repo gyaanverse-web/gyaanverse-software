@@ -9,7 +9,7 @@ import { users } from '../auth/auth.schema.js'
 // 5-level academic hierarchy: subject → module → chapter → section → concept
 //
 // `tenantId` is nullable on every level:
-//   NULL = Gyanverse global content (visible to all institutes)
+//   NULL = Gyaanverse global content (visible to all institutes)
 //   UUID = content owned by a single coaching institute
 //
 // Generation and listing always read both pools:

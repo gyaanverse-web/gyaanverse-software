@@ -10,10 +10,10 @@ import { Pool } from 'pg'
 dotenv.config()
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mint a Gyanverse platform operator.
+// Mint a Gyaanverse platform operator.
 //
 //   npm run ops:promote -- --list                 # who is a super_admin today
-//   npm run ops:promote -- someone@gyanverse.com  # promote
+//   npm run ops:promote -- someone@gyaanverse.com  # promote
 //   npm run ops:promote -- someone@… --demote     # take it back
 //   npm run ops:promote -- someone@… --yes        # skip the confirmation
 //   npm run ops:promote -- someone@… --force      # override the safety refusals
@@ -152,7 +152,7 @@ async function main(): Promise<void> {
       console.error('  A platform operator who is also inside a tenant can override marks in their own')
       console.error("  coaching through a cross-tenant route, and promoting them overwrites the account")
       console.error('  role their app navigation depends on.')
-      console.error('  Use a dedicated Gyanverse staff account, or --force if you accept both.\n')
+      console.error('  Use a dedicated Gyaanverse staff account, or --force if you accept both.\n')
       process.exitCode = 1
       return
     }

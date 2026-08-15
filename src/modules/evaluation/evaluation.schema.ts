@@ -125,7 +125,7 @@ export const questionResults = pgTable('question_results', {
   questionId: uuid('question_id').notNull().references(() => questions.id),
   // ALWAYS the real, effective mark — what the student is actually scored.
   //
-  // When a Gyanverse operator corrects an answer, their number is written here
+  // When a Gyaanverse operator corrects an answer, their number is written here
   // and the AI's original is moved to `ai_score`. That way everything downstream
   // (reports, totals, analytics) keeps reading this one column and never has to
   // know that manual corrections exist at all.
@@ -138,11 +138,11 @@ export const questionResults = pgTable('question_results', {
   //
   //   ai           the AI graded it and nobody has needed to get involved
   //   needs_human  the backstop wrote a placeholder 0 here so the class could
-  //                move on; a Gyanverse operator still has to grade it by hand
+  //                move on; a Gyaanverse operator still has to grade it by hand
   //   resolved     an operator has. `score` is their number, `ai_score` is the
   //                AI's original
   //
-  // NEVER SHOWN TO THE COACHING. `needs_human` is a Gyanverse internal state,
+  // NEVER SHOWN TO THE COACHING. `needs_human` is a Gyaanverse internal state,
   // not a task for the teacher. See
   // docs/decisions/2026-08-12-evaluation-backstop.md
   reviewStatus: varchar('review_status', { length: 20 }).notNull().default('ai'),
