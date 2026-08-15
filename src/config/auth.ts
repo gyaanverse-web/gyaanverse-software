@@ -5,14 +5,21 @@ import { db } from '../shared/db.js'
 import { env } from './env.js'
 import { users, sessions, accounts, verifications } from '../modules/auth/auth.schema.js'
 import { sendEmail } from '../modules/notification/channels/email.channel.js'
-import { withFrontendCallback } from '../shared/urls.js'
+import { authActionEmail } from '../modules/notification/templates/index.js'
+import { appTokenUrl } from '../shared/urls.js'
 
 // In dev, sendEmail() routes to Mailpit (http://localhost:8025 web UI). If
 // Mailpit isn't running the send throws — we log the URL as a fallback so the
 // signup flow can still be completed manually instead of being a dead end.
-async function sendWithFallback(label: string, to: string, subject: string, html: string, url: string): Promise<void> {
+async function sendWithFallback(
+  label: string,
+  to: string,
+  subject: string,
+  body: { html: string; text: string },
+  url: string,
+): Promise<void> {
   try {
-    await sendEmail({ to, subject, html })
+    await sendEmail({ to, subject, html: body.html, text: body.text })
   } catch (err) {
     console.error(`[auth] ${label} email send failed for ${to}:`, err)
     if (env.NODE_ENV !== 'production') {
@@ -22,27 +29,39 @@ async function sendWithFallback(label: string, to: string, subject: string, html
   }
 }
 
-async function sendVerificationEmail(userEmail: string, betterAuthUrl: string): Promise<void> {
-  // The link must hit the API (only it can consume the token), but the page the
-  // user is redirected to afterwards has to be on the frontend — see
-  // withFrontendCallback.
-  const url = withFrontendCallback(betterAuthUrl, '/verify-email')
+// Both links point at a frontend page that consumes the token via the API,
+// rather than at the API endpoint itself — see appTokenUrl for why that
+// distinction is load-bearing and not just cosmetic.
+async function sendVerificationEmail(userEmail: string, token: string): Promise<void> {
+  const url = appTokenUrl('/verify-email', token)
   await sendWithFallback(
     'EMAIL VERIFICATION',
     userEmail,
     'Verify your Gyanverse email',
-    `<p>Click <a href="${url}">this link</a> to verify your email. It expires in 1 hour.</p><p>Ignore this if you didn't sign up.</p>`,
+    authActionEmail({
+      heading: 'Confirm your email address',
+      intro: 'You created a Gyanverse account with this address. Confirm it to finish signing up.',
+      ctaLabel: 'Verify email address',
+      url,
+      expiry: '1 hour',
+    }),
     url,
   )
 }
 
-async function sendPasswordResetEmail(userEmail: string, betterAuthUrl: string): Promise<void> {
-  const url = withFrontendCallback(betterAuthUrl, '/reset-password')
+async function sendPasswordResetEmail(userEmail: string, token: string): Promise<void> {
+  const url = appTokenUrl('/reset-password', token)
   await sendWithFallback(
     'PASSWORD RESET',
     userEmail,
     'Reset your Gyanverse password',
-    `<p>Click <a href="${url}">this link</a> to reset your password. It expires in 1 hour.</p><p>Ignore this if you didn't request a reset.</p>`,
+    authActionEmail({
+      heading: 'Reset your password',
+      intro: 'We received a request to set a new password for your Gyanverse account.',
+      ctaLabel: 'Choose a new password',
+      url,
+      expiry: '1 hour',
+    }),
     url,
   )
 }
@@ -183,10 +202,14 @@ export const auth = betterAuth({
     // Better Auth.
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async (
-      { user, url }: { user: { email: string }; url: string; token: string },
+      { user, token }: { user: { email: string }; url: string; token: string },
       _request?: Request,
     ) => {
-      await sendPasswordResetEmail(user.email, url)
+      // `url` is ignored on purpose: it points at Better Auth's own
+      // /reset-password/:token redirector, which exists only to bounce the
+      // browser to a callbackURL. We link the frontend directly instead, and
+      // the token is validated when the new password is submitted.
+      await sendPasswordResetEmail(user.email, token)
     },
   },
 
@@ -194,8 +217,8 @@ export const auth = betterAuth({
   // emailAndPassword — that's the only place Better Auth's sign-up route checks.
   emailVerification: {
     sendOnSignUp: true,
-    sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
-      await sendVerificationEmail(user.email, url)
+    sendVerificationEmail: async ({ user, token }: { user: { email: string }; token: string }) => {
+      await sendVerificationEmail(user.email, token)
     },
   },
 

@@ -20,6 +20,12 @@ export interface EmailParams {
   to: string
   subject: string
   html: string
+  /**
+   * Plaintext alternative. Optional, but send it on anything that has to reach
+   * a stranger's inbox: an HTML-only body is a spam-filter signal on its own,
+   * and it's the version some clients show.
+   */
+  text?: string
   from?: string
 }
 
@@ -32,6 +38,7 @@ export async function sendEmail(params: EmailParams): Promise<void> {
       to: params.to,
       subject: params.subject,
       html: params.html,
+      text: params.text,
     })
     return
   }
@@ -41,6 +48,7 @@ export async function sendEmail(params: EmailParams): Promise<void> {
     to: params.to,
     subject: params.subject,
     html: params.html,
+    ...(params.text ? { text: params.text } : {}),
   })
 
   if (error) throw new Error(`Resend error: ${error.message}`)

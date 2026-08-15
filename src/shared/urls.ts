@@ -15,19 +15,26 @@ export function appUrl(path = '/'): string {
 }
 
 /**
- * Better Auth builds its own verification / reset links as
- * `<apiBase>/<action>?...&callbackURL=<x>` and defaults `callbackURL` to the
- * relative "/". After consuming the token it 302s the browser straight to that
- * value, so a relative default lands the user on the API root (404 JSON).
+ * Absolute URL of a frontend page carrying a one-time token.
  *
- * We can't configure that default away, so we rewrite the query param on the
- * URL Better Auth hands us, pinning it to an absolute frontend page.
+ *   appTokenUrl('/verify-email', tok) -> https://app.gyaanverse.com/verify-email?token=<tok>
  *
- * Note: the target must be inside `trustedOrigins` (see config/auth.ts) or
- * Better Auth's originCheck rejects the callback with INVALID_CALLBACK_URL.
+ * Every emailed link must be built this way and NOT point at the API, even
+ * though only the API can consume the token — the landing page calls the API
+ * itself. Better Auth hands us `<apiBase>/<action>?token=…&callbackURL=<url>`
+ * and we deliberately throw that URL away, because mailing it got users a
+ * full-page Google Safe Browsing "dangerous site" interstitial:
+ *
+ *   - a URL-encoded URL sitting in a query param is the open-redirect shape
+ *     every credential-phishing kit uses, and classifiers weight it heavily
+ *     without caring that both hosts are ours;
+ *   - `api.gyaanverse.com` serves only JSON and 302s, so it reads as a bare
+ *     redirector rather than a site;
+ *   - the link domain didn't match the brand the user just signed up on.
+ *
+ * The warning was intermittent because verdicts are per-URL and every token
+ * makes a new one — so this is not something a one-off review request fixes.
  */
-export function withFrontendCallback(betterAuthUrl: string, path: string): string {
-  const url = new URL(betterAuthUrl)
-  url.searchParams.set('callbackURL', appUrl(path))
-  return url.toString()
+export function appTokenUrl(path: string, token: string): string {
+  return `${appUrl(path)}?token=${encodeURIComponent(token)}`
 }

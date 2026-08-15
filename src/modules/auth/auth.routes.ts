@@ -364,8 +364,9 @@ export async function authRoutes(app: FastifyInstance) {
 
       if (emailChanged) {
         try {
-          // No callbackURL here: sendVerificationEmail in config/auth.ts pins
-          // every verification link to the frontend's /verify-email page.
+          // No callbackURL here — it would be ignored anyway. sendVerificationEmail
+          // in config/auth.ts builds the link from the token alone and always
+          // points it at the frontend's /verify-email page.
           await auth.api.sendVerificationEmail({
             body: { email: parsed.data.email! },
             headers: fromNodeHeaders(req.headers),
