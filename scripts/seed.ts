@@ -3,7 +3,7 @@ import { db } from '../src/shared/db.js'
 import { hashPassword } from 'better-auth/crypto'
 import { eq, and } from 'drizzle-orm'
 import { users, accounts } from '../src/modules/auth/auth.schema.js'
-import { tenants, tenantSettings } from '../src/modules/tenant/tenant.schema.js'
+import { tenants } from '../src/modules/tenant/tenant.schema.js'
 import { memberships } from '../src/modules/membership/membership.schema.js'
 import { classes, classMembers } from '../src/modules/class/class.schema.js'
 import { exams, questions } from '../src/modules/exam/exam.schema.js'
@@ -72,10 +72,7 @@ async function upsertTenant(slug: string, name: string, ownerId: string): Promis
   if (existing) { t.existed(); return existing.id }
 
   const id = crypto.randomUUID()
-  await db.transaction(async (tx) => {
-    await tx.insert(tenants).values({ id, slug, name, ownerId, plan: 'starter' })
-    await tx.insert(tenantSettings).values({ tenantId: id })
-  })
+  await db.insert(tenants).values({ id, slug, name, ownerId, plan: 'starter' })
 
   t.created()
   return id
