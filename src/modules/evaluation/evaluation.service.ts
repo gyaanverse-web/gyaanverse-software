@@ -13,6 +13,7 @@ import { assertResultsVisible } from '@modules/exam/exam.service.js'
 import { buildOcrFriendlyUrl } from '@modules/storage/index.js'
 import { evaluateSteps, indexDocuments as engineIndexDocuments } from './evaluation.engine.js'
 import { hasGradeableText, ocrImageCached } from './evaluation.ocr.js'
+import { BLANK_PAGE_AUTO_ZERO_REASON, isConfirmedBlankPage } from './evaluation.blank-page.js'
 import { countOpenReviewsForExam } from './evaluation.review.js'
 import {
   EVALUATION_JOB_OPTS,
@@ -247,6 +248,7 @@ export async function processJob(payload: EvaluationJobPayload): Promise<void> {
     let reused = 0
     let graded = 0
     let ocrCacheHits = 0
+    let blanked = 0
 
     for (const q of subjective) {
       if (!q.answerImageUrl) continue
@@ -278,9 +280,57 @@ export async function processJob(payload: EvaluationJobPayload): Promise<void> {
       // unreadable paper straight through to the grader, which scores it 0.
       // Check the text, not the list.
       if (!hasGradeableText(ocr)) {
-        // This used to write a score of 0 and mark the job completed — a student
-        // silently given nothing, with no warning anywhere. Now it is a failure:
-        // the job is retried, and only once the 3 tries are used up does
+        // OCR found nothing, but that alone does not tell us WHY — a blank page
+        // and a badly-lit photo of a full page both come back this way. Ask the
+        // pixel-only detector, which cannot be fooled by lighting or handwriting
+        // it can't read, because it is not trying to read anything: it only
+        // answers "is there ink here at all". See evaluation.blank-page.ts for
+        // why every failure of that call is treated as "not confirmed" rather
+        // than assumed blank.
+        //
+        // Confirmed blank is scored immediately, as a REAL 0 — not a
+        // `needs_human` placeholder. There is nothing for a person to read on a
+        // blank page, so routing it to the review queue would only make a
+        // correct answer wait behind a bounded escalation for no reason. Client
+        // decision, 2026-08-24.
+        if (await isConfirmedBlankPage(ocrUrl)) {
+          const feedback = buildBlankPageFeedback()
+          await db
+            .insert(questionResults)
+            .values({
+              jobId,
+              questionId: q.questionId,
+              score: 0,
+              maxScore: q.marks,
+              aiFeedback: JSON.stringify(feedback),
+              imageUrl: q.answerImageUrl,
+              autoZeroReason: BLANK_PAGE_AUTO_ZERO_REASON,
+            })
+            .onConflictDoUpdate({
+              target: [questionResults.jobId, questionResults.questionId],
+              set: {
+                score: 0,
+                maxScore: q.marks,
+                aiFeedback: JSON.stringify(feedback),
+                imageUrl: q.answerImageUrl,
+                reviewStatus: 'ai',
+                aiScore: null,
+                reviewedBy: null,
+                reviewedAt: null,
+                reviewNote: null,
+                autoZeroReason: BLANK_PAGE_AUTO_ZERO_REASON,
+              },
+            })
+          blanked++
+          continue
+        }
+
+        // Not confirmed blank — the page might genuinely be unreadable (bad
+        // scan, faint pencil, an odd angle) rather than empty, and that case
+        // still deserves a person's judgment, not an automatic 0. This used to
+        // write a score of 0 and mark the job completed — a student silently
+        // given nothing, with no warning anywhere. Now it is a failure: the job
+        // is retried, and only once the 3 tries are used up does
         // `classifyFailure` turn it into `needs_human` for a person to look at.
         throw new AppError(
           'OCR_EMPTY',
@@ -343,6 +393,11 @@ export async function processJob(payload: EvaluationJobPayload): Promise<void> {
             reviewedBy: null,
             reviewedAt: null,
             reviewNote: null,
+            // Same reasoning as `reviewStatus` above, for the other kind of flag:
+            // a genuine re-grade proves this row was never actually blank, so any
+            // earlier auto-zero marker is stale and would otherwise leave a
+            // correctly-graded answer sitting in the blank-page audit list.
+            autoZeroReason: null,
           },
         })
     }
@@ -360,7 +415,7 @@ export async function processJob(payload: EvaluationJobPayload): Promise<void> {
     const aiTotal = rollup?.total ?? 0
 
     console.log(
-      `[evaluation] job=${jobId} graded=${graded} reused=${reused} ` +
+      `[evaluation] job=${jobId} graded=${graded} reused=${reused} blanked=${blanked} ` +
         `ocrCacheHits=${ocrCacheHits} score=${aiTotal}`,
     )
 
@@ -531,6 +586,37 @@ function buildFeedbackPayload(steps: EngineEvaluatedStep[]): AiFeedbackPayload {
   )
 
   return { steps, topics, summary }
+}
+
+/**
+ * The feedback payload for a question the pixel detector confirmed blank.
+ * Shaped exactly like `buildFeedbackPayload`'s output — same `steps` array the
+ * student report screen already knows how to render, one description shown
+ * as the reason marks were lost — so nothing downstream needs a new case.
+ */
+function buildBlankPageFeedback(): AiFeedbackPayload {
+  const step: EngineEvaluatedStep = {
+    stepId: '1',
+    text: '',
+    step_status: 'wrong',
+    step_weight: 1,
+    topic: 'General',
+    step_understanding: 'No answer was written on this page.',
+    description: 'Missing: no working is visible on the page; Correct step: write your answer before submitting.',
+  }
+  return {
+    steps: [step],
+    topics: [],
+    summary: {
+      totalSteps: 1,
+      rightSteps: 0,
+      wrongSteps: 1,
+      incompleteSteps: 0,
+      unknownSteps: 0,
+      rightWeight: 0,
+      totalWeight: 1,
+    },
+  }
 }
 
 // ── Reading data back out (for the API) ───────────────────────────────────

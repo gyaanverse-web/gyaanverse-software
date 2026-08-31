@@ -38,3 +38,37 @@ export function appUrl(path = '/'): string {
 export function appTokenUrl(path: string, token: string): string {
   return `${appUrl(path)}?token=${encodeURIComponent(token)}`
 }
+
+/**
+ * Absolute URL of a page on a tenant's subdomain.
+ *
+ *   tenantUrl('niazi', '/coaching/teachers')
+ *     dev  -> http://niazi.lvh.me:3000/coaching/teachers
+ *     prod -> https://niazi.gyaanverse.com/coaching/teachers
+ *
+ * Mirrors the frontend's `buildTenantUrl` (frontend/src/lib/domain.ts) so a
+ * link built here and the one a user copies from the dashboard UI are
+ * byte-identical. FRONTEND_URL's host is the app/landing host (e.g.
+ * `app.lvh.me`, or the bare apex in prod) — stripping a leading "app." label
+ * recovers the shared root the same way the frontend derives it by stripping
+ * the leftmost label off `window.location.hostname`.
+ */
+export function tenantUrl(slug: string, path = '/'): string {
+  const { protocol, host } = new URL(env.FRONTEND_URL)
+  const root = host.startsWith('app.') ? host.slice(4) : host
+  return `${protocol}//${slug}.${root}${path.startsWith('/') ? path : `/${path}`}`
+}
+
+/**
+ * Turns a notification's `link` (stored as a bare frontend path, used as-is
+ * for in-app navigation) into an absolute URL for the one channel that needs
+ * one: email. Tenant-scoped notifications resolve onto that tenant's
+ * subdomain via `tenantUrl`, matching what the dashboard UI would show for
+ * the same destination; platform-level ones (no tenant) fall back to the app
+ * host. Already-absolute links (e.g. an invite link built before the
+ * notification is dispatched) pass through unchanged.
+ */
+export function notificationLinkUrl(link: string, tenantSlug: string | null): string {
+  if (/^https?:\/\//i.test(link)) return link
+  return tenantSlug ? tenantUrl(tenantSlug, link) : appUrl(link)
+}

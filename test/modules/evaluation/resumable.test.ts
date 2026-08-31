@@ -31,6 +31,17 @@ vi.mock('@modules/evaluation/evaluation.engine.js', () => ({
   indexTextDocuments: vi.fn(),
 }))
 
+// The blank-page detector is a separate engine reached over real `fetch`, not
+// through `evaluation.engine.js`. Mocked here too so the BLANK/OCR-empty tests
+// below stay deterministic instead of depending on nothing listening on
+// localhost:5000 in whatever environment the suite happens to run in.
+const blankPage = vi.hoisted(() => ({ isConfirmedBlankPage: vi.fn() }))
+
+vi.mock('@modules/evaluation/evaluation.blank-page.js', () => ({
+  isConfirmedBlankPage: blankPage.isConfirmedBlankPage,
+  BLANK_PAGE_AUTO_ZERO_REASON: 'blank_page_detector',
+}))
+
 const { processJob } = await import('@modules/evaluation/evaluation.service.js')
 // Phase 8 deleted the tenant-facing `retryJob`; `forceRetryJob` is the only
 // retry left, so it inherits the resumability property asserted at the bottom
@@ -58,6 +69,10 @@ const GRADED = {
 beforeEach(() => {
   engine.ocrImage.mockReset().mockResolvedValue(READABLE)
   engine.evaluateSteps.mockReset().mockResolvedValue(GRADED)
+  // Default: the detector has no opinion (matches a real network failure in a
+  // test environment) — so an OCR-empty result still falls through to the
+  // pre-existing OCR_EMPTY retry path unless a test opts into "confirmed blank".
+  blankPage.isConfirmedBlankPage.mockReset().mockResolvedValue(false)
 })
 
 /**

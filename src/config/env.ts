@@ -130,9 +130,20 @@ export const env = {
   // unsubscribe the people who can actually clear the queue.
   OPS_DIGEST_EMAILS: process.env.OPS_DIGEST_EMAILS ?? '',
 
-  EVAL_ENGINE_URL: process.env.EVAL_ENGINE_URL ?? 'http://localhost:5000/context_and_step_itr2',
+  EVAL_ENGINE_URL: process.env.EVAL_ENGINE_URL ?? 'http://localhost:5000/evaluation_engine',
   EVAL_ENGINE_TIMEOUT_MS: parseInt(process.env.EVAL_ENGINE_TIMEOUT_MS ?? '120000', 10),
   EVAL_DEFAULT_COLLECTION: process.env.EVAL_DEFAULT_COLLECTION ?? '',
+
+  // ── Blank-page detector (pixel-only, no OCR/LLM) ─────────────────────────
+  //
+  // A separate, much smaller engine — `AI_Engines/engines/image_processing` —
+  // answers one question locally with OpenCV: does this image have anything
+  // written on it at all. It is not part of the grading engine's circuit
+  // breaker: a call here is milliseconds, not tens of seconds, and its own
+  // outage must never affect the AI engine's failure count. See
+  // evaluation.blank-page.ts.
+  BLANK_PAGE_ENGINE_URL: process.env.BLANK_PAGE_ENGINE_URL ?? 'http://localhost:5000/image_processing',
+  BLANK_PAGE_ENGINE_TIMEOUT_MS: parseInt(process.env.BLANK_PAGE_ENGINE_TIMEOUT_MS ?? '10000', 10),
 
   // ── Evaluation throughput (Phase 5) ──────────────────────────────────────
   //

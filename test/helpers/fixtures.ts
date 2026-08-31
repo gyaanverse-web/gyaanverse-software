@@ -292,6 +292,11 @@ export async function createQuestionResult(params: {
   // Defaults to 'ai', i.e. the machine graded it and nobody had to look. Pass
   // 'needs_human' to stand in for a row the Phase 6 backstop parked.
   reviewStatus?: 'ai' | 'needs_human' | 'resolved'
+  // Set to stand in for a row the blank-page detector auto-zeroed. See
+  // evaluation.blank-page-audit.ts.
+  autoZeroReason?: string | null
+  reviewedBy?: string | null
+  reviewedAt?: Date | null
 }) {
   const [r] = await db
     .insert(questionResults)
@@ -303,6 +308,9 @@ export async function createQuestionResult(params: {
       imageUrl: params.imageUrl,
       aiFeedback: params.aiFeedback ?? null,
       reviewStatus: params.reviewStatus ?? 'ai',
+      autoZeroReason: params.autoZeroReason ?? null,
+      reviewedBy: params.reviewedBy ?? null,
+      reviewedAt: params.reviewedAt ?? null,
     })
     .returning()
   return r

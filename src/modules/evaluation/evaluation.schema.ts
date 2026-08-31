@@ -154,6 +154,16 @@ export const questionResults = pgTable('question_results', {
   reviewedBy: uuid('reviewed_by').references(() => users.id),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   reviewNote: text('review_note'),
+
+  // Set only when the pixel-only blank-page detector auto-scored this answer 0
+  // (see evaluation.blank-page.ts). NULL for every normal AI-graded or
+  // human-reviewed row. This is an AUDIT marker, not a review gate — unlike
+  // `needs_human`, a row with this set has already completed and its exam is
+  // free to publish; `reviewedBy` on this row means a Gyaanverse operator has
+  // since spot-checked it (`reviewStatus` staying `ai` = confirmed blank,
+  // becoming `resolved` = the detector was wrong and a human corrected the
+  // score). See evaluation.blank-page-audit.ts.
+  autoZeroReason: varchar('auto_zero_reason', { length: 30 }),
 }, (t) => [
   // Enforces one row per question per job. The database itself refuses a second
   // row, which is what lets a re-run safely say "already done, skip it" instead
@@ -162,4 +172,7 @@ export const questionResults = pgTable('question_results', {
   // Makes both the internal review queue and the publish gate fast. They ask the
   // same question: "is anything here still waiting on a person?"
   index('question_results_review_status_idx').on(t.reviewStatus),
+  // Makes the blank-page audit list/summary fast — "which rows did the
+  // detector auto-zero?"
+  index('question_results_auto_zero_reason_idx').on(t.autoZeroReason),
 ])

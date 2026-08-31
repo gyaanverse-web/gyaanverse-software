@@ -9,6 +9,13 @@ import {
   overrideQuestionResult,
 } from './evaluation.review.js'
 import { forceRetryJob, getEvaluationOverview, listActionableJobs } from './evaluation.ops.js'
+import {
+  confirmBlankPage,
+  correctBlankPageFalsePositive,
+  getBlankPageAuditItem,
+  getBlankPageAuditSummary,
+  listBlankPageAudit,
+} from './evaluation.blank-page-audit.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // `/internal/evaluation/*` — THE API FOR GYAANVERSE'S OWN STAFF.
@@ -46,6 +53,28 @@ const listSchema = z.object({
   examId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
+})
+
+const blankPageAuditListSchema = z.object({
+  tenantId: z.string().uuid().optional(),
+  // `z.coerce.boolean()` would turn the STRING "false" into `true` (any
+  // non-empty string is truthy) — exactly the query param this route needs to
+  // get right, since "only show unreviewed" is the whole point of the filter.
+  reviewed: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+})
+
+const blankPageAuditNoteSchema = z.object({
+  note: z.string().max(2000).optional(),
+})
+
+const blankPageAuditCorrectionSchema = z.object({
+  score: z.number().int().min(0),
+  note: z.string().max(2000).optional(),
 })
 
 const jobListSchema = z.object({
@@ -188,5 +217,101 @@ export async function evaluationInternalRoutes(app: FastifyInstance) {
     })
 
     return result
+  })
+
+  // ── The blank-page audit ─────────────────────────────────────────────────
+  //
+  // A SAMPLE, NOT A QUEUE. Every row here already completed — its exam is free
+  // to publish. This exists so an operator can spot-check the pixel detector's
+  // "confirmed blank" calls and know how often it's actually right. See
+  // evaluation.blank-page-audit.ts.
+
+  app.get('/internal/evaluation/blank-page-audit', {
+    schema: { hide: true, tags: ['Internal'] },
+    preHandler: internalAuth,
+  }, async (req) => {
+    const parsed = blankPageAuditListSchema.safeParse(req.query)
+    if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
+    return listBlankPageAudit(parsed.data)
+  })
+
+  app.get('/internal/evaluation/blank-page-audit/summary', {
+    schema: { hide: true, tags: ['Internal'] },
+    preHandler: internalAuth,
+  }, async () => getBlankPageAuditSummary())
+
+  // ONE row, by id — see getBlankPageAuditItem for why this list needs a real
+  // lookup instead of "find it in whatever page the list last fetched".
+  app.get('/internal/evaluation/blank-page-audit/:resultId', {
+    schema: { hide: true, tags: ['Internal'] },
+    preHandler: internalAuth,
+  }, async (req) => {
+    const { resultId } = req.params as { resultId: string }
+    const item = await getBlankPageAuditItem(resultId)
+    if (!item) throw Errors.NOT_FOUND('Blank-page audit item')
+    return item
+  })
+
+  // "The detector got it right." No score change — it's already 0 — just a
+  // stamp so the same page never shows up in the audit sample twice.
+  app.post('/internal/evaluation/results/:resultId/confirm-blank', {
+    schema: { hide: true, tags: ['Internal'] },
+    preHandler: internalAuth,
+  }, async (req) => {
+    const { resultId } = req.params as { resultId: string }
+    const parsed = blankPageAuditNoteSchema.safeParse(req.body)
+    if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
+
+    const result = await confirmBlankPage({
+      resultId,
+      reviewerId: req.user!.id,
+      note: parsed.data.note,
+    })
+
+    await logInternalAction({
+      actorId: req.user!.id,
+      action: 'evaluation.blank_page_confirmed',
+      targetId: result.resultId,
+      metadata: { note: parsed.data.note ?? null },
+    })
+
+    return result
+  })
+
+  // "The detector got it wrong — there's a real answer here." Types in the
+  // correct score, exactly like the needs_human override, then rebuilds the
+  // report the same way — the exam may already be published, so this is a
+  // correction to a finished result, not a release of a held one.
+  app.post('/internal/evaluation/results/:resultId/reject-blank', {
+    schema: { hide: true, tags: ['Internal'] },
+    preHandler: internalAuth,
+  }, async (req) => {
+    const { resultId } = req.params as { resultId: string }
+    const parsed = blankPageAuditCorrectionSchema.safeParse(req.body)
+    if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
+
+    const result = await correctBlankPageFalsePositive({
+      resultId,
+      score: parsed.data.score,
+      note: parsed.data.note,
+      reviewerId: req.user!.id,
+    })
+
+    const report = await recomputeReportForSession(result.sessionId)
+
+    await logInternalAction({
+      actorId: req.user!.id,
+      action: 'evaluation.blank_page_false_positive',
+      targetId: result.resultId,
+      tenantId: result.tenantId,
+      metadata: {
+        sessionId: result.sessionId,
+        examId: result.examId,
+        score: result.score,
+        note: parsed.data.note ?? null,
+      },
+    })
+
+    return { ...result, report }
   })
 }

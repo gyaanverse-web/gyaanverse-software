@@ -162,6 +162,13 @@
       "when": 1786826611218,
       "tag": "0022_drop_tenant_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1787569852235,
+      "tag": "0023_abnormal_jack_murdock",
+      "breakpoints": true
     }
   ]
 }

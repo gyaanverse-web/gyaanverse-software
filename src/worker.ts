@@ -12,6 +12,8 @@ import {
   getClassMemberIds,
 } from './modules/notification/notification.service.js'
 import type { BulkNotifyPayload } from './modules/notification/notification.types.js'
+import { getTenantById } from './modules/tenant/tenant.service.js'
+import { notificationLinkUrl } from './shared/urls.js'
 import { processJob as processEvaluationJob } from './modules/evaluation/evaluation.service.js'
 import { evaluationBackoffStrategy } from './modules/evaluation/evaluation.retry.js'
 import type { EvaluationJobPayload } from './modules/evaluation/evaluation.types.js'
@@ -151,9 +153,17 @@ if (runsGeneral) {
         return
       }
 
+      // `notification.link` is a bare frontend path (correct for the in-app
+      // bell's own navigation) — an email needs a full URL, resolved onto the
+      // tenant's own subdomain so it matches what the dashboard UI would show.
+      const tenant = notification.tenantId ? await getTenantById(notification.tenantId) : null
+      const link = notification.link
+        ? notificationLinkUrl(notification.link, tenant?.slug ?? null)
+        : null
+
       const template = resolveEmailTemplate(type, {
         recipientName: user.name,
-        link: notification.link,
+        link,
         ...(notification.metadata ?? {}),
         title: notification.title,
         body: notification.body,

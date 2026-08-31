@@ -9,7 +9,7 @@ import { users } from '../auth/auth.schema.js'
 import { tenants } from '../tenant/tenant.schema.js'
 import { assertWithinLimit } from '../billing/billing.service.js'
 import { dispatch } from '@modules/notification/index.js'
-import { appUrl } from '../../shared/urls.js'
+import { tenantUrl } from '../../shared/urls.js'
 
 const resend = new Resend(env.RESEND_API_KEY)
 
@@ -19,8 +19,8 @@ function generateToken(): string {
   return crypto.randomUUID().replace(/-/g, '')
 }
 
-function inviteAcceptUrl(token: string): string {
-  return appUrl(`/accept-invite?token=${token}`)
+function inviteAcceptPath(token: string): string {
+  return `/accept-invite?token=${token}`
 }
 
 // Minimal HTML escaping — tenant names are owner-supplied free text and land
@@ -136,7 +136,7 @@ export async function createInvite(
   await assertWithinLimit(tenantId, 'teachers')
 
   const [tenant] = await db
-    .select({ name: tenants.name })
+    .select({ name: tenants.name, slug: tenants.slug })
     .from(tenants)
     .where(eq(tenants.id, tenantId))
     .limit(1)
@@ -150,7 +150,10 @@ export async function createInvite(
     .values({ tenantId, invitedBy, contact, contactType, role: 'teacher', token, expiresAt })
     .returning()
 
-  const url = inviteAcceptUrl(token)
+  const path = inviteAcceptPath(token)
+  // Emailed/texted link points at the tenant's own subdomain — the same host
+  // the "copy link" button in the dashboard builds from window.location.
+  const url = tenantUrl(tenant.slug, path)
   if (contactType === 'email') {
     await sendInviteEmail(contact, tenant.name, url)
   } else {
@@ -172,7 +175,7 @@ export async function createInvite(
         data: {
           title: `You've been invited to join ${tenant.name}`,
           body: `You have a pending invitation to join ${tenant.name} as a teacher on Gyaanverse.`,
-          link: url,
+          link: path,
           metadata: { coachingName: tenant.name },
         },
       })
