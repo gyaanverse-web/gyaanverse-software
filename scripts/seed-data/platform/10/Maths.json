@@ -1,0 +1,77 @@
+{
+  "grade": "10",
+  "subject": "Maths",
+  "language": "en",
+  "activate": true,
+  "questions": [
+    {
+      "ref": "plat-10-math-quad-1",
+      "chapter": "Quadratic Equations",
+      "type": "mcq_single",
+      "difficulty": "medium",
+      "body": "For the quadratic equation $2x^2 - 4x + 3 = 0$, the discriminant $D = b^2 - 4ac$ indicates that the roots are:",
+      "payload": {
+        "options": [
+          { "id": "a", "text": "real and equal" },
+          { "id": "b", "text": "real and distinct" },
+          { "id": "c", "text": "not real (complex)" },
+          { "id": "d", "text": "rational and equal" }
+        ]
+      },
+      "answerKey": { "optionId": "c" },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "$D = (-4)^2 - 4(2)(3) = 16 - 24 = -8 < 0$, so the equation has no real roots.",
+      "tags": ["quadratic-equations", "discriminant"],
+      "source": { "type": "textbook", "book": "NCERT Class 10" },
+      "metadata": { "cognitiveLevel": "apply" }
+    },
+    {
+      "ref": "plat-10-math-trig-1",
+      "chapter": "Introduction to Trigonometry",
+      "type": "integer",
+      "difficulty": "medium",
+      "body": "Evaluate $\\sin^2 30^\\circ + \\cos^2 30^\\circ + \\tan^2 45^\\circ$.",
+      "payload": {},
+      "answerKey": { "value": 2 },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "$\\sin^2 30^\\circ + \\cos^2 30^\\circ = 1$ (Pythagorean identity), and $\\tan^2 45^\\circ = 1^2 = 1$, so the total is $1 + 1 = 2$.",
+      "tags": ["trigonometry", "trigonometric-identities"],
+      "source": { "type": "original" },
+      "metadata": { "cognitiveLevel": "apply" }
+    },
+    {
+      "ref": "plat-10-math-circ-1",
+      "chapter": "Circles",
+      "type": "match",
+      "difficulty": "medium",
+      "body": "Match each circle theorem statement (Column I) with its correct name (Column II).",
+      "payload": {
+        "left": [
+          { "id": "1", "text": "The tangent at any point of a circle is perpendicular to the radius through the point of contact." },
+          { "id": "2", "text": "Equal chords of a circle subtend equal angles at the centre." },
+          { "id": "3", "text": "The angle subtended by an arc at the centre is double the angle subtended by it at any point on the remaining part of the circle." }
+        ],
+        "right": [
+          { "id": "a", "text": "Tangent–radius theorem" },
+          { "id": "b", "text": "Equal chords theorem" },
+          { "id": "c", "text": "Angle at centre theorem" }
+        ]
+      },
+      "answerKey": {
+        "pairs": [
+          { "leftId": "1", "rightId": "a" },
+          { "leftId": "2", "rightId": "b" },
+          { "leftId": "3", "rightId": "c" }
+        ]
+      },
+      "marks": 4,
+      "negativeMarks": 0,
+      "explanation": "Each statement is the standard form of the named circle theorem covered in the NCERT Class 10 Circles chapter.",
+      "tags": ["circles", "theorems"],
+      "source": { "type": "textbook", "book": "NCERT Class 10" },
+      "metadata": { "cognitiveLevel": "remember" }
+    }
+  ]
+}

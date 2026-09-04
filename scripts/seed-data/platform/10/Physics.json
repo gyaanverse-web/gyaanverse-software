@@ -1,0 +1,104 @@
+{
+  "grade": "10",
+  "subject": "Physics",
+  "language": "en",
+  "activate": true,
+  "questions": [
+    {
+      "ref": "plat-10-phy-elec-1",
+      "chapter": "Electricity",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "Ohm's law states that the potential difference $V$ across a conductor is directly proportional to the current $I$ through it, provided its temperature remains constant. This is expressed as:",
+      "payload": {
+        "options": [
+          { "id": "a", "text": "$V = IR$" },
+          { "id": "b", "text": "$I = VR$" },
+          { "id": "c", "text": "$R = VI$" },
+          { "id": "d", "text": "$V = I/R$" }
+        ]
+      },
+      "answerKey": { "optionId": "a" },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "Ohm's law: $V = IR$, where $R$ is the resistance of the conductor.",
+      "tags": ["electricity", "ohms-law"],
+      "source": { "type": "textbook", "book": "NCERT Class 10" },
+      "metadata": { "cognitiveLevel": "remember" }
+    },
+    {
+      "ref": "plat-10-phy-elec-2",
+      "chapter": "Electricity",
+      "type": "integer",
+      "difficulty": "medium",
+      "body": "A resistor of resistance $5\\,\\Omega$ carries a current of $2\\,\\mathrm{A}$. Find the potential difference across it, in volts.",
+      "payload": {},
+      "answerKey": { "value": 10 },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "By Ohm's law, $V = IR = 2 \\times 5 = 10\\,\\mathrm{V}$.",
+      "tags": ["electricity", "ohms-law"],
+      "source": { "type": "original" },
+      "metadata": { "cognitiveLevel": "apply" }
+    },
+    {
+      "ref": "plat-10-phy-elec-3",
+      "chapter": "Electricity",
+      "type": "mcq_multiple",
+      "difficulty": "hard",
+      "body": "Which of the following statements about resistors connected in series are correct?",
+      "payload": {
+        "options": [
+          { "id": "a", "text": "The current through each resistor is the same." },
+          { "id": "b", "text": "The potential difference across each resistor is the same." },
+          { "id": "c", "text": "The equivalent resistance is greater than the largest individual resistance." },
+          { "id": "d", "text": "The equivalent resistance equals the sum of the individual resistances." }
+        ]
+      },
+      "answerKey": { "optionIds": ["a", "c", "d"] },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "In series, the same current flows through every resistor and $R_{eq} = R_1 + R_2 + \\cdots$, which is always greater than the largest individual resistance. The potential difference generally differs across unequal resistors.",
+      "tags": ["electricity", "resistors-in-series"],
+      "source": { "type": "original" },
+      "metadata": { "cognitiveLevel": "analyse" }
+    },
+    {
+      "ref": "plat-10-phy-light-1",
+      "chapter": "Light – Reflection and Refraction",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "For a spherical mirror, the mirror formula relating object distance $u$, image distance $v$, and focal length $f$ is:",
+      "payload": {
+        "options": [
+          { "id": "a", "text": "$\\dfrac{1}{f} = \\dfrac{1}{v} + \\dfrac{1}{u}$" },
+          { "id": "b", "text": "$f = uv$" },
+          { "id": "c", "text": "$\\dfrac{1}{f} = \\dfrac{1}{v} - \\dfrac{1}{u}$" },
+          { "id": "d", "text": "$f = u + v$" }
+        ]
+      },
+      "answerKey": { "optionId": "a" },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "The mirror formula is $\\dfrac{1}{f} = \\dfrac{1}{v} + \\dfrac{1}{u}$.",
+      "tags": ["light", "mirror-formula"],
+      "source": { "type": "textbook", "book": "NCERT Class 10" },
+      "metadata": { "cognitiveLevel": "remember" }
+    },
+    {
+      "ref": "plat-10-phy-light-2",
+      "chapter": "Light – Reflection and Refraction",
+      "type": "integer",
+      "difficulty": "hard",
+      "body": "An object is placed $30\\,\\mathrm{cm}$ in front of a concave mirror of focal length $10\\,\\mathrm{cm}$. Using the mirror formula $\\dfrac{1}{f} = \\dfrac{1}{v} + \\dfrac{1}{u}$ with $u = 30\\,\\mathrm{cm}$ and $f = 10\\,\\mathrm{cm}$ (real-is-positive convention), find the image distance $v$, in cm.",
+      "payload": {},
+      "answerKey": { "value": 15 },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "$\\dfrac{1}{v} = \\dfrac{1}{f} - \\dfrac{1}{u} = \\dfrac{1}{10} - \\dfrac{1}{30} = \\dfrac{3-1}{30} = \\dfrac{1}{15} \\Rightarrow v = 15\\,\\mathrm{cm}$.",
+      "tags": ["light", "mirror-formula"],
+      "source": { "type": "original" },
+      "metadata": { "cognitiveLevel": "apply" }
+    }
+  ]
+}

@@ -18,6 +18,7 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:questions": "tsx scripts/seed-questions.ts",
+    "db:seed:platform": "tsx scripts/seed-platform-questions.ts",
     "seed:studio": "tsx scripts/seed-studio.ts",
     "db:reset": "tsx scripts/reset-db.ts",
     "ops:promote": "tsx scripts/ops-promote.ts",

@@ -470,7 +470,16 @@ export async function processJob(payload: EvaluationJobPayload): Promise<void> {
     // ── SOMETHING WENT WRONG ────────────────────────────────────────────────
     // Everything below records WHAT went wrong and WHEN to try again. It does
     // not decide those things itself — evaluation.retry.ts does.
-    const message = err instanceof Error ? err.message : String(err)
+    //
+    // A DB failure's `.message` is USELESS on its own: drizzle's
+    // DrizzleQueryError always sets it to the literal query text and params, no
+    // matter what actually went wrong. The real Postgres error — constraint
+    // name, SQLSTATE, detail — is on `.cause`. Without unwrapping it here, every
+    // insert failure logs as the same generic "Failed query: ..." forever and
+    // there is no way to tell a foreign-key violation from a missing index from
+    // an actual outage.
+    const cause = err instanceof Error && err.cause instanceof Error ? err.cause : undefined
+    const message = cause ? `${cause.message} (${err instanceof Error ? err.message : String(err)})` : err instanceof Error ? err.message : String(err)
     const code = err instanceof AppError ? err.code : 'UNKNOWN'
     const failureClass = classifyFailure(code, attemptsMade)
     const terminal = isTerminal(failureClass)
