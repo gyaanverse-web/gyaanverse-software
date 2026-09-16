@@ -2,16 +2,14 @@ import { env } from '@config/env.js'
 import { AppError } from '@shared/errors.js'
 import type {
   EngineEvaluationResponse,
-  EngineIndexDocument,
-  EngineIndexResponse,
   EngineOcrStep,
 } from './evaluation.types.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE ONLY DOOR TO THE PYTHON AI ENGINE.
 //
-// Every call to the AI — reading handwriting, grading steps, indexing syllabus
-// documents — goes through `callEngine` below. Nothing else in the backend talks
+// Every call to the AI — reading handwriting, grading steps — goes through
+// `callEngine` below. Nothing else in the backend talks
 // to the engine directly. That is what makes the safety features here apply
 // everywhere automatically.
 //
@@ -211,22 +209,4 @@ export async function evaluateSteps(params: {
   if (params.collectionName) body.collection_name = params.collectionName
   if (params.topK !== undefined) body.top_k = params.topK
   return callEngine<EngineEvaluationResponse>('/checked_json_ocr', body)
-}
-
-export async function indexDocuments(params: {
-  documents: EngineIndexDocument[]
-  collectionName?: string
-}): Promise<EngineIndexResponse> {
-  const body: Record<string, unknown> = { documents: params.documents }
-  if (params.collectionName) body.collection_name = params.collectionName
-  return callEngine<EngineIndexResponse>('/index_documents', body)
-}
-
-export async function indexTextDocuments(params: {
-  documentPaths: string[]
-  collectionName?: string
-}): Promise<EngineIndexResponse> {
-  const body: Record<string, unknown> = { document_paths: params.documentPaths }
-  if (params.collectionName) body.collection_name = params.collectionName
-  return callEngine<EngineIndexResponse>('/index_text_documents', body)
 }

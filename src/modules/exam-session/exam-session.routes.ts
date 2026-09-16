@@ -34,8 +34,7 @@ export async function examSessionRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { examId } = req.params as { examId: string }
     const user = req.user!
-    // Pass tenant from resolved context if present, otherwise null
-    const session = await startSession(user.id, examId, req.tenant?.id ?? null)
+    const session = await startSession(user.id, examId)
     reply.status(201).send({ session })
   })
 
@@ -162,7 +161,7 @@ export async function examSessionRoutes(app: FastifyInstance) {
       const { examId } = req.params as { examId: string }
       const tenant = req.tenant!
       const user = req.user!
-      const sessions = await listSessionsForExam(examId, tenant.id, user.id, user.role)
+      const sessions = await listSessionsForExam(examId, tenant.id, user.id, req.tenantRole!)
       reply.send({ sessions })
     },
   )

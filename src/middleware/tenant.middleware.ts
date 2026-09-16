@@ -11,10 +11,11 @@ function extractSubdomainSlug(host: string, suffix: string): string | undefined 
   return prefix.split('.')[0] || undefined
 }
 
-export async function tenantMiddleware(
-  req: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
+/**
+ * The tenant slug a request names, without resolving or requiring it.
+ * Exported for routes where a tenant is optional (`GET /tenants/me`).
+ */
+export function slugFromRequest(req: FastifyRequest): string | undefined {
   // Strip port so sharma.gyaanverse.com:3000 resolves the same as sharma.gyaanverse.com
   const host = (req.headers.host ?? '').replace(/:\d+$/, '')
   const appDomain = process.env.APP_DOMAIN ?? 'gyaanverse.com'
@@ -41,6 +42,14 @@ export async function tenantMiddleware(
     slug = query['tenant']
   }
 
+  return slug || undefined
+}
+
+export async function tenantMiddleware(
+  req: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const slug = slugFromRequest(req)
   if (!slug) {
     throw new AppError('TENANT_REQUIRED', 'Could not resolve tenant from request', 400)
   }

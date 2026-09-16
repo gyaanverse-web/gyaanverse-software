@@ -139,6 +139,16 @@ export async function joinAsStudent(userId: string, tenantId: string) {
 
 // ── Get the coaching the current user belongs to ────────────────────────────
 
+async function oldestMembership(userId: string) {
+  const [row] = await db
+    .select({ tenantId: memberships.tenantId, role: memberships.role })
+    .from(memberships)
+    .where(eq(memberships.userId, userId))
+    .orderBy(memberships.createdAt, memberships.tenantId)
+    .limit(1)
+  return row ?? null
+}
+
 /**
  * The coaching the user belongs to, plus **the role they hold in it**.
  *
@@ -147,15 +157,40 @@ export async function joinAsStudent(userId: string, tenantId: string) {
  * coaching (global role `coaching_owner`) while being a `teacher` in another.
  * Clients must gate tenant UI on this value, mirroring `requireTenantRole` on
  * the server, or they will show owner-only screens to a non-owner.
+ *
+ * `slug` is the coaching the browser is on (subdomain / X-Tenant-Slug). When
+ * there is one, the answer is the membership in **that** coaching and nothing
+ * else — every other request from that page is authorised against it, so
+ * describing a different coaching would give the page the wrong name, role and
+ * entitlements. It never falls back to another membership:
+ *   - member of no coaching at all  → null (404), the ordinary "no coaching yet"
+ *   - member elsewhere, not here (or no such coaching) → 403 NOT_A_MEMBER, so
+ *     the client sends them to their own coaching instead of offering to
+ *     create one
+ *
+ * With no slug (the app host, where reserved slugs like the frontend's `dev`
+ * placeholder also land) there is no coaching to prefer: the oldest membership
+ * wins, so the answer is at least stable between requests.
  */
 export async function getMyTenant(
   userId: string,
+  slug?: string,
 ): Promise<{ tenant: Tenant; membershipRole: string } | null> {
-  const [row] = await db
-    .select({ tenantId: memberships.tenantId, role: memberships.role })
-    .from(memberships)
-    .where(eq(memberships.userId, userId))
-    .limit(1)
+  if (slug && !isReservedSlug(slug)) {
+    const tenant = await getTenantBySlug(slug)
+    const [row] = tenant
+      ? await db
+          .select({ role: memberships.role })
+          .from(memberships)
+          .where(and(eq(memberships.userId, userId), eq(memberships.tenantId, tenant.id)))
+          .limit(1)
+      : []
+    if (tenant && row) return { tenant, membershipRole: row.role }
+    if (!(await oldestMembership(userId))) return null
+    throw new AppError('NOT_A_MEMBER', 'You are not a member of this coaching', 403)
+  }
+
+  const row = await oldestMembership(userId)
   if (!row) return null
   const tenant = await getTenantById(row.tenantId)
   return tenant ? { tenant, membershipRole: row.role } : null

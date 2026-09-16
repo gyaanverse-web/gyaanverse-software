@@ -11,7 +11,7 @@ import { getLimitUsage } from '@modules/billing/billing.service.js'
 import { recomputeReportForSession } from '@modules/report/report.service.js'
 import { assertResultsVisible } from '@modules/exam/exam.service.js'
 import { buildOcrFriendlyUrl } from '@modules/storage/index.js'
-import { evaluateSteps, indexDocuments as engineIndexDocuments } from './evaluation.engine.js'
+import { evaluateSteps } from './evaluation.engine.js'
 import { hasGradeableText, ocrImageCached } from './evaluation.ocr.js'
 import { BLANK_PAGE_AUTO_ZERO_REASON, isConfirmedBlankPage } from './evaluation.blank-page.js'
 import { countOpenReviewsForExam } from './evaluation.review.js'
@@ -24,7 +24,6 @@ import {
 import type {
   AiFeedbackPayload,
   EngineEvaluatedStep,
-  EngineIndexDocument,
   EvaluationJobPayload,
   EvaluationJobStatus,
 } from './evaluation.types.js'
@@ -827,21 +826,6 @@ export async function getExamEvaluationProgress(examId: string, tenantId: string
 // `evaluation.ops.ts`: `super_admin` only, works across coachings, recorded in
 // the audit log, and it deliberately KEEPS the error history that the old
 // teacher-facing version used to wipe.
-
-// ── Syllabus indexing (the AI's reference material) ───────────────────────
-//
-// Uploads a coaching's syllabus text into the vector database, so the grader can
-// check a student's answer against the material it was actually taught from.
-// This is the one function here that has nothing to do with grading a paper.
-
-export async function indexSyllabus(params: {
-  documents: EngineIndexDocument[]
-  collectionName?: string
-}) {
-  if (!params.documents || params.documents.length === 0)
-    throw Errors.VALIDATION('documents must be a non-empty list')
-  return engineIndexDocuments(params)
-}
 
 // ── Small helpers ─────────────────────────────────────────────────────────
 

@@ -60,7 +60,7 @@ console.log('✓ dispatch() called')
 console.log('  → in-app row inserted into notifications table')
 console.log('  → email job enqueued in notification-email BullMQ queue')
 console.log('  → check Mailpit at http://localhost:54324 for the email (RESEND_API_KEY is ignored in development)')
-console.log('  → SSE clients on notif:' + firstUser.id + ' will receive the payload')
+console.log('  → SSE clients on notif:' + firstUser.id + ':' + firstTenant.id + ' will receive the payload')
 
 // ── 3. Fire a result_ready notification (triggers SMS too if priority=urgent) ─
 

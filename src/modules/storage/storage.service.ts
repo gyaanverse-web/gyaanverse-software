@@ -43,17 +43,17 @@ function resourceTypeFor(scope: UploadScope): 'image' | 'raw' | 'auto' {
 }
 
 // ── Folder strategy ────────────────────────────────────────────────────────
-// All assets live under {root}/{tenantId|public}/{scope}/{contextKey}/
-// Tenants can't read other tenants' uploads (URL is hard to guess, plus we
-// can apply Cloudinary access-control later if needed).
+// All assets live under {root}/{tenantId}/{scope}/{contextKey}/ — there is no
+// tenant-less folder. Student answers take the tenant from the session, which
+// inherits it from the exam. The prefix is what per-tenant access control,
+// retention and offboarding deletion hang on.
 
 function buildFolder(params: {
-  tenantId: string | null
+  tenantId: string
   scope: UploadScope
   contextKey: string
 }): string {
-  const tenant = params.tenantId ?? 'public'
-  return `${env.CLOUDINARY_UPLOAD_FOLDER}/${tenant}/${params.scope}/${params.contextKey}`
+  return `${env.CLOUDINARY_UPLOAD_FOLDER}/${params.tenantId}/${params.scope}/${params.contextKey}`
 }
 
 // ── Public APIs ───────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ export async function deleteFile(publicId: string, resourceType: 'image' | 'raw'
 // ── Internal ──────────────────────────────────────────────────────────────
 
 function signUpload(params: {
-  tenantId: string | null
+  tenantId: string
   scope: UploadScope
   contextKey: string
   resourceType: 'image' | 'raw' | 'auto'

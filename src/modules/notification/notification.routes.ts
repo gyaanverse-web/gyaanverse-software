@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { authenticate, requireTenantRole } from '@middleware/auth.middleware.js'
 import { tenantMiddleware } from '@middleware/tenant.middleware.js'
 import { Errors } from '@shared/errors.js'
-import { createSubscriberConnection } from './notification.redis.js'
+import { allTenantsChannelPattern, createSubscriberConnection, notificationChannel } from './notification.redis.js'
 import {
   getNotifications,
   getUnreadCount,
@@ -85,10 +85,11 @@ export async function notificationRoutes(app: FastifyInstance) {
     raw.flushHeaders()
     raw.write(':\n\n')
 
+    // No tenant on the app host — every tenant's channel for this user.
     const subscriber = createSubscriberConnection()
-    await subscriber.subscribe(`notif:${user.id}`)
+    await subscriber.psubscribe(allTenantsChannelPattern(user.id))
 
-    subscriber.on('message', (_channel, payload) => {
+    subscriber.on('pmessage', (_pattern, _channel, payload) => {
       raw.write(`data: ${payload}\n\n`)
     })
 
@@ -102,7 +103,7 @@ export async function notificationRoutes(app: FastifyInstance) {
     })
 
     clearInterval(heartbeat)
-    await subscriber.unsubscribe()
+    await subscriber.punsubscribe()
     subscriber.disconnect()
     if (!raw.writableEnded) raw.end()
   })
@@ -199,7 +200,7 @@ export async function notificationRoutes(app: FastifyInstance) {
 
   // ── SSE stream — must be registered before /:id routes ───────────────────
   // One SSE connection per tenant tab; Redis pub/sub fans in-app notifications
-  // to any live connection for this user.
+  // for THIS tenant (plus platform-level ones) to any live connection for this user.
 
   app.get('/tenant/notifications/stream', {
     schema: {
@@ -211,6 +212,7 @@ export async function notificationRoutes(app: FastifyInstance) {
     preHandler: tenantMember,
   }, async (req, reply) => {
     const user = req.user!
+    const tenant = req.tenant!
 
     // Hijack response so Fastify doesn't auto-finalize it.
     // reply.hijack() bypasses @fastify/cors onSend hook, so we must write CORS
@@ -232,8 +234,13 @@ export async function notificationRoutes(app: FastifyInstance) {
     // Initial ping so client confirms the connection is open
     raw.write(':\n\n')
 
+    // This tenant's channel plus platform-level (tenant-less) notifications —
+    // the same `tenantId = $t OR tenantId IS NULL` rule the list query applies.
     const subscriber = createSubscriberConnection()
-    await subscriber.subscribe(`notif:${user.id}`)
+    await subscriber.subscribe(
+      notificationChannel(user.id, tenant.id),
+      notificationChannel(user.id, null),
+    )
 
     subscriber.on('message', (_channel, payload) => {
       raw.write(`data: ${payload}\n\n`)

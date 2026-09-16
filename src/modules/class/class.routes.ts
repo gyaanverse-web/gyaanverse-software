@@ -106,9 +106,9 @@ export async function classRoutes(app: FastifyInstance) {
       const user = req.user!
 
       let classList
-      if (user.role === 'student') {
+      if (req.tenantRole === 'student') {
         classList = await getClassesForStudent(user.id, tenant.id)
-      } else if (user.role === 'teacher') {
+      } else if (req.tenantRole === 'teacher') {
         classList = await getClassesForTeacher(user.id, tenant.id)
       } else {
         classList = await getAllClasses(tenant.id)
@@ -222,7 +222,7 @@ export async function classRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
       const user = req.user!
-      const updated = await updateClass(id, tenant.id, user.id, user.role, parsed.data)
+      const updated = await updateClass(id, tenant.id, user.id, req.tenantRole!, parsed.data)
       reply.send({ class: updated })
     },
   )
@@ -280,7 +280,7 @@ export async function classRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
       const user = req.user!
-      const result = await deleteClass(id, tenant.id, user.id, user.role)
+      const result = await deleteClass(id, tenant.id, user.id, req.tenantRole!)
       reply.send(result)
     },
   )
@@ -316,7 +316,7 @@ export async function classRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
       const user = req.user!
-      const record = await generateClassJoinCode(id, tenant.id, user.id, user.role, {
+      const record = await generateClassJoinCode(id, tenant.id, user.id, req.tenantRole!, {
         expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : undefined,
         maxUses: parsed.data.maxUses,
       })
@@ -343,7 +343,7 @@ export async function classRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
       const user = req.user!
-      const codes = await listClassJoinCodes(id, tenant.id, user.id, user.role)
+      const codes = await listClassJoinCodes(id, tenant.id, user.id, req.tenantRole!)
       reply.send({ joinCodes: codes })
     },
   )
@@ -370,7 +370,7 @@ export async function classRoutes(app: FastifyInstance) {
       const { id, codeId } = req.params as { id: string; codeId: string }
       const tenant = req.tenant!
       const user = req.user!
-      const result = await revokeClassJoinCode(id, tenant.id, user.id, user.role, codeId)
+      const result = await revokeClassJoinCode(id, tenant.id, user.id, req.tenantRole!, codeId)
       reply.send(result)
     },
   )
@@ -410,7 +410,7 @@ export async function classRoutes(app: FastifyInstance) {
 
       // The service decides what a student may see — it also checks that this
       // student is actually approved in this batch before answering.
-      const students = await listClassStudents(id, tenant.id, status, { role: user.role, id: user.id })
+      const students = await listClassStudents(id, tenant.id, status, { role: req.tenantRole!, id: user.id })
       reply.send({ students })
     },
   )
@@ -447,7 +447,7 @@ export async function classRoutes(app: FastifyInstance) {
       const { id, studentId } = req.params as { id: string; studentId: string }
       const tenant = req.tenant!
       const user = req.user!
-      const result = await updateEnrollmentStatus(id, tenant.id, studentId, user.id, user.role, parsed.data.action)
+      const result = await updateEnrollmentStatus(id, tenant.id, studentId, user.id, req.tenantRole!, parsed.data.action)
       reply.send(result)
     },
   )
@@ -475,7 +475,7 @@ export async function classRoutes(app: FastifyInstance) {
       const { id, studentId } = req.params as { id: string; studentId: string }
       const tenant = req.tenant!
       const user = req.user!
-      const result = await removeStudentFromClass(id, tenant.id, studentId, user.id, user.role)
+      const result = await removeStudentFromClass(id, tenant.id, studentId, user.id, req.tenantRole!)
       reply.send(result)
     },
   )

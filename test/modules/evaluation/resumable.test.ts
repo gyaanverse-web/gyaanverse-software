@@ -27,8 +27,6 @@ const engine = vi.hoisted(() => ({
 vi.mock('@modules/evaluation/evaluation.engine.js', () => ({
   ocrImage: engine.ocrImage,
   evaluateSteps: engine.evaluateSteps,
-  indexDocuments: vi.fn(),
-  indexTextDocuments: vi.fn(),
 }))
 
 // The blank-page detector is a separate engine reached over real `fetch`, not

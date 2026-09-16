@@ -114,6 +114,9 @@ describe('createReportForSession — happy path', () => {
     expect(mockedDispatch).toHaveBeenCalledOnce()
     const call = mockedDispatch.mock.calls[0][0]
     expect(call.type).toBe('result_ready')
+    // F-5: a null tenant here made the notification platform-level — shown in
+    // every coaching's bell and emailed with an app-host link.
+    expect(call.tenantId).toBe(exam.tenantId)
     expect((call.recipients as { userIds: string[] }).userIds).toContain(student.id)
     expect(call.data.body).toContain('10 out of 10')
   })

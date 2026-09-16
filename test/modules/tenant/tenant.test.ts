@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@shared/db.js'
 import { tenants } from '@modules/tenant/tenant.schema.js'
 import { memberships } from '@modules/membership/membership.schema.js'
@@ -223,5 +223,67 @@ describe('getMyTenant', () => {
     expect((await getMyTenant(owner.id))?.membershipRole).toBe('coaching_owner')
     expect((await getMyTenant(teacher.id))?.membershipRole).toBe('teacher')
     expect((await getMyTenant(student.id))?.membershipRole).toBe('student')
+  })
+
+  // Audit F-6: the slug the browser is on used to be ignored, and a user in two
+  // coachings got whichever membership row Postgres yielded first.
+  describe('scoped to the coaching the request is on', () => {
+    // Owner of A, student of B — the audit's canonical two-coaching user.
+    async function twoCoachingUser() {
+      const a = await seedTenantWithUsers()
+      const b = await seedTenantWithUsers()
+      await createMembership({ userId: a.owner.id, tenantId: b.tenant.id, role: 'student' })
+      // Pin the order explicitly: A first, B later.
+      await db.update(memberships).set({ createdAt: new Date('2026-01-01') })
+        .where(and(eq(memberships.userId, a.owner.id), eq(memberships.tenantId, a.tenant.id)))
+      await db.update(memberships).set({ createdAt: new Date('2026-02-01') })
+        .where(and(eq(memberships.userId, a.owner.id), eq(memberships.tenantId, b.tenant.id)))
+      return { user: a.owner, tenantA: a.tenant, tenantB: b.tenant }
+    }
+
+    it('CRITICAL: returns the membership in the coaching on the host, not another one', async () => {
+      const { user, tenantA, tenantB } = await twoCoachingUser()
+
+      const onA = await getMyTenant(user.id, tenantA.slug)
+      expect(onA?.tenant.id).toBe(tenantA.id)
+      expect(onA?.membershipRole).toBe('coaching_owner')
+
+      const onB = await getMyTenant(user.id, tenantB.slug)
+      expect(onB?.tenant.id).toBe(tenantB.id)
+      expect(onB?.membershipRole).toBe('student')
+    })
+
+    it('CRITICAL: 403 on a coaching the user does not belong to, never a fallback to their own', async () => {
+      const { tenant: mine, owner } = await seedTenantWithUsers()
+      const { tenant: other } = await seedTenantWithUsers()
+      expect(mine.id).not.toBe(other.id)
+
+      await expect(getMyTenant(owner.id, other.slug)).rejects.toMatchObject({
+        code: 'NOT_A_MEMBER', statusCode: 403,
+      })
+    })
+
+    it('403 on a slug that names no coaching, for a user who has one', async () => {
+      const { owner } = await seedTenantWithUsers()
+      await expect(getMyTenant(owner.id, 'no-such-coaching')).rejects.toMatchObject({ statusCode: 403 })
+    })
+
+    it('null (404) on any coaching for a user who belongs to none — "no coaching yet", not "wrong coaching"', async () => {
+      const { tenant } = await seedTenantWithUsers()
+      const user = await createTestUser()
+      expect(await getMyTenant(user.id, tenant.slug)).toBeNull()
+    })
+
+    it('with no tenant (app host), returns the oldest membership, every time', async () => {
+      const { user, tenantA } = await twoCoachingUser()
+      for (let i = 0; i < 3; i++) {
+        expect((await getMyTenant(user.id))?.tenant.id).toBe(tenantA.id)
+      }
+    })
+
+    it('a reserved slug (the frontend sends `dev` on the app host) counts as no tenant', async () => {
+      const { user, tenantA } = await twoCoachingUser()
+      expect((await getMyTenant(user.id, 'dev'))?.tenant.id).toBe(tenantA.id)
+    })
   })
 })

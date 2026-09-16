@@ -36,8 +36,11 @@ export function requireRole(...roles: Role[]) {
 // services authorise on the role the caller holds *in this coaching*. Reading
 // `req.user.role` for a tenant decision is a bug: the account role is global and
 // a user can own one coaching while teaching in another.
+//
+// Returned as a named function so a route's preHandler chain can be inspected:
+// test/integration/tenant-isolation.test.ts asserts every /tenant/* route has it.
 export function requireTenantRole(...roles: Role[]) {
-  return async (req: FastifyRequest, _reply: FastifyReply): Promise<void> => {
+  return async function requireTenantRoleGuard(req: FastifyRequest, _reply: FastifyReply): Promise<void> {
     if (!req.user) throw new AppError('UNAUTHORIZED', 'Authentication required', 401)
     if (!req.tenant) throw new AppError('TENANT_REQUIRED', 'Tenant context missing', 400)
 

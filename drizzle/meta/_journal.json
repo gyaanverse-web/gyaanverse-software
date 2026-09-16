@@ -169,6 +169,13 @@
       "when": 1787569852235,
       "tag": "0023_abnormal_jack_murdock",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789573806989,
+      "tag": "0024_flaky_sasquatch",
+      "breakpoints": true
     }
   ]
 }

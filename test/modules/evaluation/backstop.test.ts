@@ -48,8 +48,6 @@ const engine = vi.hoisted(() => ({
 vi.mock('@modules/evaluation/evaluation.engine.js', () => ({
   ocrImage: engine.ocrImage,
   evaluateSteps: engine.evaluateSteps,
-  indexDocuments: vi.fn(),
-  indexTextDocuments: vi.fn(),
 }))
 
 const { processJob, getSessionEvaluation } = await import(

@@ -219,7 +219,7 @@ export async function createTestQuestion(overrides: {
 export async function createTestSession(overrides: {
   examId: string
   studentId: string
-  tenantId: string | null
+  tenantId: string
   totalMarks?: number
   autoScore?: number | null
   manualScore?: number | null

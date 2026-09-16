@@ -32,12 +32,13 @@ describe('startSession', () => {
     await enrollStudent({ classId: cls.id, studentId: student.id })
     await linkExamToClass(exam.id, cls.id)
 
-    const session = await startSession(student.id, exam.id, tenant.id)
+    const session = await startSession(student.id, exam.id)
     expect(session.status).toBe('in_progress')
     expect(session.attemptNumber).toBe(1)
     expect(session.totalMarks).toBe(100)
     expect(session.examId).toBe(exam.id)
     expect(session.studentId).toBe(student.id)
+    expect(session.tenantId).toBe(tenant.id)
     // expiresAt is roughly now + 60min
     const expectedExpiry = Date.now() + 60 * 60 * 1000
     expect(session.expiresAt.getTime()).toBeGreaterThan(expectedExpiry - 5000)
@@ -49,7 +50,7 @@ describe('startSession', () => {
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, status: 'draft',
     })
-    await expect(startSession(student.id, exam.id, tenant.id)).rejects.toMatchObject({
+    await expect(startSession(student.id, exam.id)).rejects.toMatchObject({
       code: 'VALIDATION',
     })
   })
@@ -67,7 +68,7 @@ describe('startSession', () => {
     await enrollStudent({ classId: cls.id, studentId: student.id })
     await linkExamToClass(exam.id, cls.id)
 
-    await expect(startSession(student.id, exam.id, tenant.id)).rejects.toMatchObject({
+    await expect(startSession(student.id, exam.id)).rejects.toMatchObject({
       code: 'VALIDATION',
     })
   })
@@ -84,7 +85,7 @@ describe('startSession', () => {
     await enrollStudent({ classId: cls.id, studentId: student.id })
     await linkExamToClass(exam.id, cls.id)
 
-    await expect(startSession(student.id, exam.id, tenant.id)).rejects.toMatchObject({
+    await expect(startSession(student.id, exam.id)).rejects.toMatchObject({
       code: 'VALIDATION',
     })
   })
@@ -95,7 +96,7 @@ describe('startSession', () => {
       tenantId: tenant.id, createdBy: owner.id, visibility: 'private', status: 'live',
     })
     // student is in the tenant but NOT in any class linked to the exam
-    await expect(startSession(student.id, exam.id, tenant.id)).rejects.toMatchObject({
+    await expect(startSession(student.id, exam.id)).rejects.toMatchObject({
       code: 'FORBIDDEN',
     })
   })
@@ -108,7 +109,7 @@ describe('startSession', () => {
     })
 
     // attempt 1
-    await startSession(student.id, exam.id, tenant.id)
+    await startSession(student.id, exam.id)
     // mark as submitted so the "active session" guard doesn't trigger
     await db
       .update(examSessions)
@@ -116,14 +117,14 @@ describe('startSession', () => {
       .where(eq(examSessions.studentId, student.id))
 
     // attempt 2
-    await startSession(student.id, exam.id, tenant.id)
+    await startSession(student.id, exam.id)
     await db
       .update(examSessions)
       .set({ status: 'submitted' })
       .where(eq(examSessions.studentId, student.id))
 
     // attempt 3 — should be rejected
-    await expect(startSession(student.id, exam.id, tenant.id)).rejects.toMatchObject({
+    await expect(startSession(student.id, exam.id)).rejects.toMatchObject({
       code: 'VALIDATION',
     })
   })
@@ -134,12 +135,23 @@ describe('startSession', () => {
       tenantId: tenant.id, createdBy: owner.id, visibility: 'public_free', status: 'live',
       maxAttempts: 5,
     })
-    await startSession(student.id, exam.id, tenant.id)
+    await startSession(student.id, exam.id)
 
     // Second concurrent start — should conflict
-    await expect(startSession(student.id, exam.id, tenant.id)).rejects.toMatchObject({
+    await expect(startSession(student.id, exam.id)).rejects.toMatchObject({
       code: 'CONFLICT',
     })
+  })
+
+  it('records the exam\'s tenant even when the student belongs to a different coaching', async () => {
+    const a = await seedTenantWithUsers()
+    const b = await seedTenantWithUsers()
+    const exam = await createTestExam({
+      tenantId: a.tenant.id, createdBy: a.owner.id, visibility: 'public_free', status: 'live',
+    })
+
+    const session = await startSession(b.student.id, exam.id)
+    expect(session.tenantId).toBe(a.tenant.id)
   })
 })
 

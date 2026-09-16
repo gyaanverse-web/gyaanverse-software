@@ -11,8 +11,22 @@ function getPubClient(): IORedis {
   return _pubClient
 }
 
-export function publishNotification(userId: string, payload: unknown): Promise<number> {
-  return getPubClient().publish(`notif:${userId}`, JSON.stringify(payload))
+// Channels are tenant-scoped: `notif:<userId>:<tenantId>`, or
+// `notif:<userId>:global` for a notification with no tenant (e.g. a marketplace
+// purchase). A tenant subdomain subscribes to its own tenant plus global, so a
+// user in two coachings never sees coaching B's events live on coaching A. The
+// app host has no tenant to prefer and pattern-subscribes to all of them.
+// User ids are UUIDs, so they contain no glob metacharacters.
+export function notificationChannel(userId: string, tenantId: string | null): string {
+  return `notif:${userId}:${tenantId ?? 'global'}`
+}
+
+export function allTenantsChannelPattern(userId: string): string {
+  return `notif:${userId}:*`
+}
+
+export function publishNotification(userId: string, tenantId: string | null, payload: unknown): Promise<number> {
+  return getPubClient().publish(notificationChannel(userId, tenantId), JSON.stringify(payload))
 }
 
 // Each SSE handler creates its own subscriber connection (subscribe mode

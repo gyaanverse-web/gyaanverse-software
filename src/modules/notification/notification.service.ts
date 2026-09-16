@@ -66,7 +66,7 @@ export async function dispatchToUsers(
   //    In-app is never suppressed — the bell always shows everything. Only the
   //    outbound email/SMS channels honour per-user preferences (step 3).
   for (const row of rows) {
-    await publishNotification(row.userId, { ...row, readAt: null, archivedAt: null, createdAt: new Date() })
+    await publishNotification(row.userId, row.tenantId, { ...row, readAt: null, archivedAt: null, createdAt: new Date() })
   }
 
   // 3. Enqueue email/SMS delivery jobs, respecting per-user preferences.

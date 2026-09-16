@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import { env } from '@config/env.js'
 import {
   getAnswerUploadSignature,
   buildOcrFriendlyUrl,
 } from '@modules/storage/storage.service.js'
+import { startSession } from '@modules/exam-session/exam-session.service.js'
 import {
   createTestUser,
   createTestExam,
@@ -50,6 +52,29 @@ describe('getAnswerUploadSignature — content type validation', () => {
         }),
       ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' })
     }
+  })
+})
+
+describe('getAnswerUploadSignature — tenant folder', () => {
+  it('files answers under the exam\'s tenant for a session started through startSession', async () => {
+    // Goes through the real session-creation path rather than a fixture that
+    // supplies tenantId — the fixture route is how F-4 hid behind passing tests.
+    const a = await seedTenantWithUsers()
+    const b = await seedTenantWithUsers()
+    const exam = await createTestExam({
+      tenantId: a.tenant.id, createdBy: a.owner.id, visibility: 'public_free', status: 'live',
+    })
+    const session = await startSession(b.student.id, exam.id)
+
+    const sig = await getAnswerUploadSignature({
+      studentId: b.student.id,
+      sessionId: session.id,
+      questionId: 'q1',
+      contentType: 'image/jpeg',
+    })
+    expect(sig.fields.folder).toBe(
+      `${env.CLOUDINARY_UPLOAD_FOLDER}/${a.tenant.id}/answer/${session.id}/q1`,
+    )
   })
 })
 

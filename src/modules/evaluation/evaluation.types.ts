@@ -112,17 +112,6 @@ export interface EngineEvaluationResponse {
   response: EngineEvaluatedStep[]
 }
 
-export interface EngineIndexDocument {
-  document_id?: string
-  text: string
-  metadata?: Record<string, unknown>
-}
-
-export interface EngineIndexResponse {
-  collection_name: string
-  indexed_chunks: number
-}
-
 // ── What gets saved into `question_results.ai_feedback` ────────────────────
 //
 // The engine's step-by-step verdict, plus a small tally, stored as JSON text in

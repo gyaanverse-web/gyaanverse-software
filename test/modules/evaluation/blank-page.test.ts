@@ -27,8 +27,6 @@ const engine = vi.hoisted(() => ({ ocrImage: vi.fn(), evaluateSteps: vi.fn() }))
 vi.mock('@modules/evaluation/evaluation.engine.js', () => ({
   ocrImage: engine.ocrImage,
   evaluateSteps: engine.evaluateSteps,
-  indexDocuments: vi.fn(),
-  indexTextDocuments: vi.fn(),
 }))
 
 const blankPage = vi.hoisted(() => ({ isConfirmedBlankPage: vi.fn() }))

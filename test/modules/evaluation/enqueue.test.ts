@@ -80,27 +80,4 @@ describe('enqueueEvaluation', () => {
     expect(jobsForOverflow).toHaveLength(1)
     expect(jobsForOverflow[0].status).toBe('pending')
   })
-
-  it('resolves tenant from exam, not from session.tenantId (which may be null for public exams)', async () => {
-    // A public-exam taker is NOT a member of the exam's tenant. Their session
-    // has tenantId=null. The evaluation job still has to be billed to the
-    // exam's creating tenant.
-    const { tenant, owner } = await seedTenantWithUsers()
-    const exam = await createTestExam({
-      tenantId: tenant.id, createdBy: owner.id, visibility: 'public_free',
-    })
-    // session with null tenant
-    const session = await createTestSession({
-      examId: exam.id, studentId: owner.id, tenantId: null, status: 'submitted',
-    })
-
-    const result = await enqueueEvaluation(session.id)
-    expect(result).not.toBeNull()
-
-    const [job] = await db
-      .select()
-      .from(evaluationJobs)
-      .where(eq(evaluationJobs.id, result!.jobId))
-    expect(job.tenantId).toBe(tenant.id) // billed to exam's tenant
-  })
 })

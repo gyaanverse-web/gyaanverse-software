@@ -1,0 +1,1 @@
+ALTER TABLE "exam_sessions" ALTER COLUMN "tenant_id" SET NOT NULL;

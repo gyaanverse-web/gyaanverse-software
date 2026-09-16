@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { Errors } from '../../shared/errors.js'
 import { authenticate, requireTenantRole } from '../../middleware/auth.middleware.js'
-import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
+import { tenantMiddleware, slugFromRequest } from '../../middleware/tenant.middleware.js'
 import {
   getTenantById,
   registerCoaching,
@@ -99,14 +99,16 @@ export async function tenantRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Tenants'],
         summary: 'Get my coaching',
-        description: 'Returns the coaching institute the authenticated user belongs to, plus `membershipRole` — the role they hold **in that coaching**. Gate tenant-scoped UI on `membershipRole`, not on the global session role: the two differ for anyone who belongs to more than one coaching.',
+        description: 'Returns the coaching the request is on (subdomain / `X-Tenant-Slug`), plus `membershipRole` — the role the user holds **in that coaching**. 403 `NOT_A_MEMBER` if they belong to other coachings but not this one; 404 if they belong to none. With no tenant (app host), returns their oldest membership, or 404 if they have none. Gate tenant-scoped UI on `membershipRole`, not on the global session role: the two differ for anyone who belongs to more than one coaching.',
         security: AUTH,
       },
+      // No tenantMiddleware: a tenant is optional here, and an app-host request
+      // must not 400 for lacking one.
       preHandler: [authenticate],
     },
     async (req, reply) => {
       const { id: userId } = req.user!
-      const result = await getMyTenant(userId)
+      const result = await getMyTenant(userId, slugFromRequest(req))
       if (!result) throw Errors.NOT_FOUND('Coaching')
 
       // Entitlements ride along with the tenant rather than living on their own
