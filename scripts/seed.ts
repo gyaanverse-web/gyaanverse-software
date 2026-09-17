@@ -17,6 +17,12 @@ if (process.env.NODE_ENV === 'production') {
 
 const SEED_PASSWORD = 'Seed@1234'
 const TENANT_SLUG = 'dev'
+// A second coaching under the SAME owner/teacher, so the seed actually exercises
+// multi-tenancy: one person can own more than one coaching (tenant.service.ts
+// registerCoaching, F-9) and a teacher can teach at more than one. A tenant-only
+// script that only ever creates a single coaching would never catch a regression
+// back to the old "one coaching per person" assumption.
+const TENANT2_SLUG = 'dev2'
 
 // ── Summary tracker ────────────────────────────────────────────────────────────
 type Counts = { created: number; existed: number }
@@ -36,7 +42,6 @@ function track(entity: string) {
 async function upsertUser(data: {
   email: string
   name: string
-  role: string
 }): Promise<string> {
   const t = track('users')
   const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, data.email))
@@ -51,7 +56,6 @@ async function upsertUser(data: {
     name: data.name,
     emailVerified: true,
     isProfileComplete: true,
-    role: data.role,
   })
 
   await db.insert(accounts).values({
@@ -265,27 +269,27 @@ async function upsertExam(
 console.log('\nSeeding database...\n')
 
 // 1. Users
-const ownerId   = await upsertUser({ email: 'owner@dev.local',    name: 'Dev Owner',   role: 'coaching_owner' })
-const teacherId = await upsertUser({ email: 'teacher@dev.local',  name: 'Dev Teacher', role: 'teacher' })
-const s1Id      = await upsertUser({ email: 'student1@dev.local', name: 'Dev Student 1', role: 'student' })
-const s2Id      = await upsertUser({ email: 'student2@dev.local', name: 'Dev Student 2', role: 'student' })
+const ownerId   = await upsertUser({ email: 'owner@dev.local',    name: 'Dev Owner' })
+const teacherId = await upsertUser({ email: 'teacher@dev.local',  name: 'Dev Teacher' })
+const s1Id      = await upsertUser({ email: 'student1@dev.local', name: 'Dev Student 1' })
+const s2Id      = await upsertUser({ email: 'student2@dev.local', name: 'Dev Student 2' })
 
-// 2. Tenant
-const tenantId = await upsertTenant(TENANT_SLUG, 'Dev Coaching Institute', ownerId)
+// 2. Tenants — a second coaching owned by the same owner, staffed by the same
+//    teacher, to prove the seed doesn't regress to "one coaching per person".
+const tenantId  = await upsertTenant(TENANT_SLUG,  'Dev Coaching Institute',        ownerId)
+const tenant2Id = await upsertTenant(TENANT2_SLUG, 'Dev Coaching Institute — Annex', ownerId)
 
-// 3. Link all users to the tenant (idempotent UPDATE — same value each run)
-await db.update(users).set({ tenantId }).where(eq(users.id, ownerId))
-await db.update(users).set({ tenantId }).where(eq(users.id, teacherId))
-await db.update(users).set({ tenantId }).where(eq(users.id, s1Id))
-await db.update(users).set({ tenantId }).where(eq(users.id, s2Id))
+// 3. Memberships
+await upsertMembership(ownerId,   tenantId,  'coaching_owner')
+await upsertMembership(teacherId, tenantId,  'teacher')
+await upsertMembership(s1Id,      tenantId,  'student')
+await upsertMembership(s2Id,      tenantId,  'student')
 
-// 4. Memberships
-await upsertMembership(ownerId,   tenantId, 'coaching_owner')
-await upsertMembership(teacherId, tenantId, 'teacher')
-await upsertMembership(s1Id,      tenantId, 'student')
-await upsertMembership(s2Id,      tenantId, 'student')
+await upsertMembership(ownerId,   tenant2Id, 'coaching_owner')
+await upsertMembership(teacherId, tenant2Id, 'teacher')
+await upsertMembership(s2Id,      tenant2Id, 'student')
 
-// 5. Subjects → modules → chapters
+// 4. Subjects → modules → chapters
 const mathsId   = await upsertSubject(tenantId, 'Mathematics', '12')
 const physicsId = await upsertSubject(tenantId, 'Physics', '12')
 
@@ -300,14 +304,22 @@ await upsertChapter(tenantId, physicsModId, 'Thermodynamics', 2)
 // 5b. A few active bank questions so the test-engine generator is demoable.
 await seedBankQuestions(tenantId, ownerId, physicsId, physicsModId, mechanicsId)
 
+// 5c. The second tenant's own subject tree — tenant-scoped, so it can't just
+// reuse `dev`'s subject rows.
+const chemistryId    = await upsertSubject(tenant2Id, 'Chemistry', '12')
+const chemistryModId = await upsertModule(tenant2Id, chemistryId, 'Core Chemistry', 1)
+await upsertChapter(tenant2Id, chemistryModId, 'Organic Chemistry', 1)
+
 // 6. Classes
-const mathsClassId   = await upsertClass(tenantId, teacherId, 'Maths Batch A',   'Grade 12 Mathematics')
-const physicsClassId = await upsertClass(tenantId, teacherId, 'Physics Batch A', 'Grade 12 Physics')
+const mathsClassId     = await upsertClass(tenantId,  teacherId, 'Maths Batch A',     'Grade 12 Mathematics')
+const physicsClassId   = await upsertClass(tenantId,  teacherId, 'Physics Batch A',   'Grade 12 Physics')
+const chemistryClassId = await upsertClass(tenant2Id, teacherId, 'Chemistry Batch A', 'Grade 12 Chemistry')
 
 // 7. Class enrollments
-await upsertClassMember(mathsClassId,   s1Id)
-await upsertClassMember(mathsClassId,   s2Id)
-await upsertClassMember(physicsClassId, s1Id)
+await upsertClassMember(mathsClassId,     s1Id)
+await upsertClassMember(mathsClassId,     s2Id)
+await upsertClassMember(physicsClassId,   s1Id)
+await upsertClassMember(chemistryClassId, s2Id)
 
 // 8. Published exam with questions
 const { id: examId, isNew: examIsNew } = await upsertExam(tenantId, teacherId, 'Sample Mock Test')
@@ -386,11 +398,11 @@ for (const [entity, counts] of summary) {
 
 console.log(divider)
 console.log('\n  Dev credentials  (password: Seed@1234)')
-console.log(`  ${'owner@dev.local'.padEnd(26)} coaching_owner`)
-console.log(`  ${'teacher@dev.local'.padEnd(26)} teacher`)
-console.log(`  ${'student1@dev.local'.padEnd(26)} student`)
-console.log(`  ${'student2@dev.local'.padEnd(26)} student`)
-console.log(`\n  Tenant slug: ${TENANT_SLUG}  →  use ?tenant=${TENANT_SLUG} in local API requests`)
+console.log(`  ${'owner@dev.local'.padEnd(26)} coaching_owner  of  ${TENANT_SLUG} + ${TENANT2_SLUG}`)
+console.log(`  ${'teacher@dev.local'.padEnd(26)} teacher         in  ${TENANT_SLUG} + ${TENANT2_SLUG}`)
+console.log(`  ${'student1@dev.local'.padEnd(26)} student         in  ${TENANT_SLUG}`)
+console.log(`  ${'student2@dev.local'.padEnd(26)} student         in  ${TENANT_SLUG} + ${TENANT2_SLUG}`)
+console.log(`\n  Tenant slugs: ${TENANT_SLUG}, ${TENANT2_SLUG}  →  use ?tenant=<slug> in local API requests`)
 console.log(`${divider}\n`)
 
 process.exit(0)

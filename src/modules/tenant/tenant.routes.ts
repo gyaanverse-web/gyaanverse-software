@@ -24,7 +24,6 @@ import {
   SLUG_MAX_LENGTH,
   SLUG_PATTERN,
   slugRejectionReason,
-  isReservedSlug,
 } from '../../config/reserved-slugs.js'
 
 const registerSchema = z.object({
@@ -101,7 +100,7 @@ export async function tenantRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Tenants'],
         summary: 'Get my coaching',
-        description: 'Returns the coaching the request is on (subdomain / `X-Tenant-Slug`), plus `membershipRole` — the role the user holds **in that coaching**. 403 `NOT_A_MEMBER` if they belong to other coachings but not this one; 404 if they belong to none. With no tenant (app host), returns their oldest membership, or 404 if they have none — and also `memberships`, every coaching they belong to, oldest first, for a tenant switcher. Gate tenant-scoped UI on `membershipRole`, not on the global session role: the two differ for anyone who belongs to more than one coaching.',
+        description: 'Returns the coaching the request is on (subdomain / `X-Tenant-Slug`), plus `membershipRole` — the role the user holds **in that coaching**. 403 `NOT_A_MEMBER` if they belong to other coachings but not this one; 404 if they belong to none. With no tenant (app host), returns their oldest membership instead, or 404 if they have none. Always also includes `memberships`, every coaching the user belongs to (oldest first), so a switcher can be rendered from any page — including inside a coaching the user is already on. Gate tenant-scoped UI on `membershipRole`, not on the global session role: the two differ for anyone who belongs to more than one coaching.',
         security: AUTH,
       },
       // No tenantMiddleware: a tenant is optional here, and an app-host request
@@ -124,16 +123,18 @@ export async function tenantRoutes(app: FastifyInstance) {
       // limits now arrive as data, so the client cannot drift from plans.ts.
       const entitlements = await resolveEntitlements(result.tenant.id)
 
-      // On the app host there is no single coaching to describe — `result` is
-      // already the "oldest membership" guess. Include every membership too, so
-      // the frontend can offer a real switcher instead of trusting the guess.
-      const memberships = !slug || isReservedSlug(slug) ? await listMyMemberships(userId) : undefined
+      // Always include every coaching the user belongs to, not just the one
+      // this request resolved to — the switcher needs the full list whether
+      // it's rendered on the app host (no single coaching to describe, so
+      // `result` is only the "oldest membership" guess) or inside a coaching
+      // the user is already on (where they may still belong to others).
+      const memberships = await listMyMemberships(userId)
 
       reply.send({
         tenant: result.tenant,
         membershipRole: result.membershipRole,
         entitlements,
-        ...(memberships ? { memberships } : {}),
+        memberships,
       })
     },
   )
