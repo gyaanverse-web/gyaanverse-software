@@ -14,7 +14,7 @@ import {
 
 // A second teacher wired into the given tenant — the common reassignment target.
 async function addTeacher(tenantId: string, name?: string) {
-  const t = await createTestUser({ role: 'teacher', tenantId, name })
+  const t = await createTestUser({ name })
   await createMembership({ userId: t.id, tenantId, role: 'teacher' })
   return t
 }
@@ -65,7 +65,7 @@ describe('reassignClassTeacher', () => {
 
   it('rejects a target who is not a member of the tenant', async () => {
     const { tenant, teacher } = await seedTenantWithUsers()
-    const outsider = await createTestUser({ role: 'teacher' }) // no membership anywhere
+    const outsider = await createTestUser() // no membership anywhere
     const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
 
     await expect(

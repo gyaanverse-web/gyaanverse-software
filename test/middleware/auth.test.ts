@@ -29,7 +29,7 @@ describe('requireTenantRole', () => {
   it('rejects a user without a membership in this tenant', async () => {
     const { tenant } = await seedTenantWithUsers()
     // Outsider — exists but has no membership row for this tenant.
-    const outsider = await createTestUser({ role: 'student' })
+    const outsider = await createTestUser()
     const mw = requireTenantRole('coaching_owner', 'teacher', 'student')
 
     await expect(
@@ -90,17 +90,17 @@ describe('requireTenantRole', () => {
 })
 
 describe('requireRole (global)', () => {
-  it('allows when the global role matches', async () => {
+  it('allows when the account role matches', async () => {
     const mw = requireRole('super_admin')
     await expect(
-      mw(fakeReq({ user: { id: 'x', role: 'super_admin' } }), noopReply),
+      mw(fakeReq({ user: { id: 'x', accountRole: 'super_admin' } }), noopReply),
     ).resolves.toBeUndefined()
   })
 
-  it('rejects when the global role does not match', async () => {
+  it('rejects when the account role does not match', async () => {
     const mw = requireRole('super_admin')
     await expect(
-      mw(fakeReq({ user: { id: 'x', role: 'coaching_owner' } }), noopReply),
+      mw(fakeReq({ user: { id: 'x', accountRole: 'student' } }), noopReply),
     ).rejects.toMatchObject({ code: 'FORBIDDEN' })
   })
 

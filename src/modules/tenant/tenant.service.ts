@@ -69,17 +69,13 @@ export async function registerCoaching(ownerId: string, data: { slug: string; na
     )
   }
 
-  const [existingOwnership] = await db
-    .select({ id: memberships.id })
-    .from(memberships)
-    .where(and(eq(memberships.userId, ownerId), eq(memberships.role, 'coaching_owner')))
-    .limit(1)
-  if (existingOwnership) throw Errors.CONFLICT('You already own a coaching institute')
-
+  // One person may own more than one coaching (D-1: multi-tenancy audit F-9).
+  // `memberships` already enforces "one owner per tenant" via the tenant's
+  // single `coaching_owner` membership row; nothing here needs to limit how
+  // many tenants a single user owns.
   return db.transaction(async (tx) => {
     const [tenant] = await tx.insert(tenants).values({ slug, name: data.name, ownerId }).returning()
     await tx.insert(memberships).values({ userId: ownerId, tenantId: tenant.id, role: 'coaching_owner' })
-    await tx.update(users).set({ role: 'coaching_owner', tenantId: tenant.id }).where(eq(users.id, ownerId))
     return { tenant: toTenant(tenant) }
   })
 }
@@ -105,10 +101,7 @@ export async function addTeacher(tenantId: string, phone: string) {
 
   await assertWithinLimit(tenantId, 'teachers')
 
-  await db.transaction(async (tx) => {
-    await tx.insert(memberships).values({ userId: teacher.id, tenantId, role: 'teacher' })
-    await tx.update(users).set({ role: 'teacher', tenantId }).where(eq(users.id, teacher.id))
-  })
+  await db.insert(memberships).values({ userId: teacher.id, tenantId, role: 'teacher' })
 
   return { id: teacher.id, name: teacher.name, phone: teacher.phoneNumber, role: 'teacher' }
 }
@@ -129,10 +122,7 @@ export async function joinAsStudent(userId: string, tenantId: string) {
 
   await assertWithinLimit(tenantId, 'students')
 
-  await db.transaction(async (tx) => {
-    await tx.insert(memberships).values({ userId, tenantId, role: 'student' })
-    await tx.update(users).set({ tenantId }).where(eq(users.id, userId))
-  })
+  await db.insert(memberships).values({ userId, tenantId, role: 'student' })
 
   return { success: true }
 }
@@ -153,8 +143,9 @@ async function oldestMembership(userId: string) {
  * The coaching the user belongs to, plus **the role they hold in it**.
  *
  * `membershipRole` is the authoritative role for anything tenant-scoped. It is
- * NOT the same as the global `user.role` on the session: someone can own one
- * coaching (global role `coaching_owner`) while being a `teacher` in another.
+ * NOT the same as `user.accountRole` on the session, which is platform-level
+ * only (`super_admin` or the default `student`) and never describes a role
+ * held inside any particular coaching.
  * Clients must gate tenant UI on this value, mirroring `requireTenantRole` on
  * the server, or they will show owner-only screens to a non-owner.
  *
@@ -194,6 +185,34 @@ export async function getMyTenant(
   if (!row) return null
   const tenant = await getTenantById(row.tenantId)
   return tenant ? { tenant, membershipRole: row.role } : null
+}
+
+/**
+ * Every coaching the user belongs to, oldest first — the data behind a tenant
+ * switcher. `getMyTenant` (above) answers "which ONE coaching"; this answers
+ * "which coachings, plural", for the app-host case where there is no subdomain
+ * to prefer among them.
+ */
+export async function listMyMemberships(
+  userId: string,
+): Promise<Array<{ tenant: Tenant; membershipRole: string }>> {
+  const rows = await db
+    .select({ tenantId: memberships.tenantId, role: memberships.role })
+    .from(memberships)
+    .where(eq(memberships.userId, userId))
+    .orderBy(memberships.createdAt, memberships.tenantId)
+
+  if (rows.length === 0) return []
+
+  const tenantRows = await db.select().from(tenants).where(inArray(tenants.id, rows.map((r) => r.tenantId)))
+  const tenantById = new Map(tenantRows.map((t) => [t.id, toTenant(t)]))
+
+  return rows
+    .map((r) => {
+      const tenant = tenantById.get(r.tenantId)
+      return tenant ? { tenant, membershipRole: r.role } : null
+    })
+    .filter((r): r is { tenant: Tenant; membershipRole: string } => r !== null)
 }
 
 // ── List members of a coaching ──────────────────────────────────────────────
@@ -299,22 +318,6 @@ export async function deleteCoaching(tenantId: string, requesterId: string): Pro
   if (tenant.ownerId !== requesterId) throw Errors.FORBIDDEN()
 
   await db.transaction(async (tx) => {
-    // Collect member user IDs so we can reset their profile fields
-    const members = await tx
-      .select({ userId: memberships.userId })
-      .from(memberships)
-      .where(eq(memberships.tenantId, tenantId))
-
-    const memberIds = members.map((m) => m.userId)
-
-    // Reset tenantId + role for every member (owner included)
-    if (memberIds.length > 0) {
-      await tx
-        .update(users)
-        .set({ tenantId: null, role: 'student' })
-        .where(and(inArray(users.id, memberIds), eq(users.tenantId, tenantId)))
-    }
-
     // Remove class-level data before deleting classes
     const tenantClasses = await tx
       .select({ id: classes.id })
@@ -368,12 +371,6 @@ export async function removeMember(tenantId: string, targetUserId: string, reque
   await db
     .delete(memberships)
     .where(and(eq(memberships.userId, targetUserId), eq(memberships.tenantId, tenantId)))
-
-  // Reset user's tenantId+role only if this was their primary tenant
-  await db
-    .update(users)
-    .set({ tenantId: null, role: 'student' })
-    .where(and(eq(users.id, targetUserId), eq(users.tenantId, tenantId)))
 
   return { success: true }
 }

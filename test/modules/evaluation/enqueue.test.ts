@@ -65,7 +65,7 @@ describe('enqueueEvaluation', () => {
 
     // One more session over the cap — use a different student to dodge the
     // attempt-number uniqueness constraint
-    const overflowStudent = await createTestUser({ role: 'student' })
+    const overflowStudent = await createTestUser()
     const overflowSession = await createTestSession({
       examId: exam.id, studentId: overflowStudent.id, tenantId: tenant.id, status: 'submitted',
     })

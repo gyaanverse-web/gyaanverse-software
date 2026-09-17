@@ -2,7 +2,6 @@ import { eq, and, sql, desc } from 'drizzle-orm'
 import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
 import { memberships, coachingJoinCodes } from './membership.schema.js'
-import { users } from '../auth/auth.schema.js'
 import { getTenantById } from '../tenant/tenant.service.js'
 import { assertWithinLimit } from '../billing/billing.service.js'
 import { dispatch } from '@modules/notification/index.js'
@@ -107,7 +106,6 @@ export async function useCoachingJoinCode(userId: string, code: string) {
 
   await db.transaction(async (tx) => {
     await tx.insert(memberships).values({ userId, tenantId: record.tenantId, role: 'student' })
-    await tx.update(users).set({ tenantId: record.tenantId }).where(eq(users.id, userId))
     await tx
       .update(coachingJoinCodes)
       .set({ usedCount: sql`${coachingJoinCodes.usedCount} + 1` })

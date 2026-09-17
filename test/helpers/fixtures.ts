@@ -37,7 +37,7 @@ export async function createTestTenant(overrides: {
   name?: string
 } = {}) {
   const slug = overrides.slug ?? `acme-${uniq()}`
-  const ownerId = overrides.ownerId ?? (await createTestUser({ role: 'coaching_owner' })).id
+  const ownerId = overrides.ownerId ?? (await createTestUser()).id
 
   const [tenant] = await db
     .insert(tenants)
@@ -49,20 +49,21 @@ export async function createTestTenant(overrides: {
     })
     .returning()
 
-  // Backfill the owner's tenantId pointer; matches what registerCoaching does.
-  await db.update(users).set({ tenantId: tenant.id }).where(eq(users.id, ownerId))
-
   return tenant
 }
 
 // ── User ──────────────────────────────────────────────────────────────────
 
 export async function createTestUser(overrides: {
-  role?: 'super_admin' | 'coaching_owner' | 'teacher' | 'student'
+  // Platform-level account role — 'super_admin' or the default 'student'.
+  // A coaching-scoped role ('coaching_owner' | 'teacher' | 'student') belongs
+  // on a `memberships` row (see createMembership / seedTenantWithUsers), never
+  // here — that mirrors what production code writes since the multi-tenancy
+  // audit's Core retirement of `users.tenantId`/`users.role`.
+  accountRole?: 'super_admin' | 'student'
   email?: string
   name?: string
   phoneNumber?: string
-  tenantId?: string
   emailVerified?: boolean
 } = {}) {
   const id = uniq()
@@ -73,8 +74,7 @@ export async function createTestUser(overrides: {
       email: overrides.email ?? `${id}@test.local`,
       emailVerified: overrides.emailVerified ?? true,
       phoneNumber: overrides.phoneNumber ?? null,
-      role: overrides.role ?? 'student',
-      tenantId: overrides.tenantId ?? null,
+      accountRole: overrides.accountRole ?? 'student',
     })
     .returning()
   return user
@@ -406,14 +406,14 @@ export async function createTestCoachingJoinCode(params: {
  * Returns the {tenant, owner, teacher, student} bundle.
  */
 export async function seedTenantWithUsers(plan: PlanName = 'free') {
-  const owner = await createTestUser({ role: 'coaching_owner' })
+  const owner = await createTestUser()
   const tenant = await createTestTenant({ ownerId: owner.id, plan })
   await createMembership({ userId: owner.id, tenantId: tenant.id, role: 'coaching_owner' })
 
-  const teacher = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+  const teacher = await createTestUser()
   await createMembership({ userId: teacher.id, tenantId: tenant.id, role: 'teacher' })
 
-  const student = await createTestUser({ role: 'student', tenantId: tenant.id })
+  const student = await createTestUser()
   await createMembership({ userId: student.id, tenantId: tenant.id, role: 'student' })
 
   return { tenant, owner, teacher, student }

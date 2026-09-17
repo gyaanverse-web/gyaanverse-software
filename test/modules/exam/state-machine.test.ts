@@ -144,7 +144,7 @@ describe('transitionExam — forbidden transitions', () => {
 
   it('CRITICAL: a non-creator teacher cannot perform an author transition', async () => {
     const { tenant, exam } = await examAt('draft')
-    const colleague = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const colleague = await createTestUser()
     await createMembership({ userId: colleague.id, tenantId: tenant.id, role: 'teacher' })
 
     await expect(
@@ -186,7 +186,7 @@ describe('transitionExam — forbidden transitions', () => {
 
   it('CRITICAL: a non-creator teacher still cannot publish someone else\'s exam', async () => {
     const { tenant, exam } = await examAt('ready_to_publish')
-    const colleague = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const colleague = await createTestUser()
     await createMembership({ userId: colleague.id, tenantId: tenant.id, role: 'teacher' })
 
     await expect(

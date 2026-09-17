@@ -12,7 +12,7 @@ import {
 
 describe('listTeachersWithWorkload', () => {
   it('returns an empty array when the tenant has no teachers', async () => {
-    const owner = await createTestUser({ role: 'coaching_owner' })
+    const owner = await createTestUser()
     const tenant = await createTestTenant({ ownerId: owner.id })
     await createMembership({ userId: owner.id, tenantId: tenant.id, role: 'coaching_owner' })
 
@@ -41,9 +41,9 @@ describe('listTeachersWithWorkload', () => {
     const c1 = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
     const c2 = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
 
-    const s1 = await createTestUser({ role: 'student', tenantId: tenant.id })
-    const s2 = await createTestUser({ role: 'student', tenantId: tenant.id })
-    const s3 = await createTestUser({ role: 'student', tenantId: tenant.id })
+    const s1 = await createTestUser()
+    const s2 = await createTestUser()
+    const s3 = await createTestUser()
     await enrollStudent({ classId: c1.id, studentId: s1.id, status: 'approved' })
     await enrollStudent({ classId: c1.id, studentId: s2.id, status: 'pending' }) // excluded
     await enrollStudent({ classId: c2.id, studentId: s3.id, status: 'approved' })
@@ -61,7 +61,7 @@ describe('listTeachersWithWorkload', () => {
     const { tenant, teacher } = await seedTenantWithUsers()
     const c1 = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
     const c2 = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
-    const student = await createTestUser({ role: 'student', tenantId: tenant.id })
+    const student = await createTestUser()
     await enrollStudent({ classId: c1.id, studentId: student.id, status: 'approved' })
     await enrollStudent({ classId: c2.id, studentId: student.id, status: 'approved' })
 
@@ -76,7 +76,7 @@ describe('listTeachersWithWorkload', () => {
 
     // Give tenant B's teacher some workload; tenant A's roster must ignore it.
     const bClass = await createTestClass({ tenantId: b.tenant.id, teacherId: b.teacher.id })
-    const bStudent = await createTestUser({ role: 'student', tenantId: b.tenant.id })
+    const bStudent = await createTestUser()
     await enrollStudent({ classId: bClass.id, studentId: bStudent.id, status: 'approved' })
     await createTestExam({ tenantId: b.tenant.id, createdBy: b.teacher.id })
 
@@ -92,7 +92,7 @@ describe('listTeachersWithWorkload', () => {
 
   it('lists every teacher with their own independent workload', async () => {
     const { tenant, teacher } = await seedTenantWithUsers()
-    const teacher2 = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const teacher2 = await createTestUser()
     await createMembership({ userId: teacher2.id, tenantId: tenant.id, role: 'teacher' })
 
     await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })

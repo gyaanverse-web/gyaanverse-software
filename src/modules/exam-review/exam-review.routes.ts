@@ -13,8 +13,8 @@ import {
 // platform `super_admin`: every route here is tenant-scoped
 // (`/tenant/exams/...`) and gated by `requireTenantRole('coaching_owner')`,
 // which reads the caller's membership in the resolved tenant. We therefore pass
-// a fixed `coaching_owner` actor role, because `req.user.role` is the *global*
-// session role and may not match the caller's role in this tenant.
+// a fixed `coaching_owner` actor role, because `req.user.accountRole` is the
+// *global* session role and may not match the caller's role in this tenant.
 
 const idParam = {
   type: 'object',

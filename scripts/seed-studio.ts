@@ -207,22 +207,14 @@ async function ensureUser(data: {
   tenantId: string
   password: string
   resetPassword: boolean
-}): Promise<{ id: string; status: 'created' | 'existed' | 'conflict'; note?: string }> {
+}): Promise<{ id: string; status: 'created' | 'existed'; note?: string }> {
   const email = data.email.trim().toLowerCase()
-  const [existing] = await db
-    .select({ id: users.id, tenantId: users.tenantId, role: users.role })
-    .from(users)
-    .where(eq(users.email, email))
-    .limit(1)
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1)
 
   if (existing) {
-    if (existing.tenantId && existing.tenantId !== data.tenantId)
-      return { id: existing.id, status: 'conflict', note: 'belongs to a different coaching' }
-
-    if (!existing.tenantId) await db.update(users).set({ tenantId: data.tenantId }).where(eq(users.id, existing.id))
     if (data.resetPassword) await setPassword(existing.id, data.password)
-    await ensureMembership(existing.id, data.tenantId, data.role)
-    return { id: existing.id, status: 'existed', note: existing.role !== data.role ? `role is ${existing.role}` : undefined }
+    const roleChanged = await ensureMembership(existing.id, data.tenantId, data.role)
+    return { id: existing.id, status: 'existed', note: roleChanged ? `role changed to ${data.role}` : undefined }
   }
 
   const id = crypto.randomUUID()
@@ -232,9 +224,7 @@ async function ensureUser(data: {
     name: data.name,
     emailVerified: true,
     isProfileComplete: true,
-    role: data.role,
     signupIntent: data.role === 'coaching_owner' ? 'coaching_owner' : 'student',
-    tenantId: data.tenantId,
   })
   await setPassword(id, data.password)
   await ensureMembership(id, data.tenantId, data.role)
@@ -261,14 +251,22 @@ async function setPassword(userId: string, password: string): Promise<void> {
   })
 }
 
-async function ensureMembership(userId: string, tenantId: string, role: string): Promise<void> {
+/** Creates the membership, or updates its role if the user is already a member
+ *  under a different one (e.g. promoting a seeded student to teacher). Returns
+ *  true when an existing membership's role actually changed. */
+async function ensureMembership(userId: string, tenantId: string, role: string): Promise<boolean> {
   const [existing] = await db
-    .select({ id: memberships.id })
+    .select({ id: memberships.id, role: memberships.role })
     .from(memberships)
     .where(and(eq(memberships.userId, userId), eq(memberships.tenantId, tenantId)))
     .limit(1)
-  if (existing) return
+  if (existing) {
+    if (existing.role === role) return false
+    await db.update(memberships).set({ role }).where(eq(memberships.id, existing.id))
+    return true
+  }
   await db.insert(memberships).values({ id: crypto.randomUUID(), userId, tenantId, role })
+  return false
 }
 
 // ── Reads ────────────────────────────────────────────────────────────────────
@@ -299,7 +297,7 @@ async function listTenants() {
  */
 async function tenantDetail(tenantId: string) {
   const staff = await db
-    .select({ id: users.id, name: users.name, email: users.email, role: users.role })
+    .select({ id: users.id, name: users.name, email: users.email, role: memberships.role })
     .from(memberships)
     .innerJoin(users, eq(users.id, memberships.userId))
     .where(eq(memberships.tenantId, tenantId))
@@ -431,9 +429,10 @@ async function createCoaching(b: Record<string, string>) {
   const [clash] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, slug)).limit(1)
   if (clash) throw new Bad(`A coaching with the slug '${slug}' already exists`)
 
-  // The owner must exist before the tenant (tenants.owner_id is NOT NULL) and
-  // the tenant must exist before the owner can point at it — so the user row is
-  // written first with no tenant, then updated. Same order registerCoaching uses.
+  // The owner must exist before the tenant (tenants.owner_id is NOT NULL), and
+  // the tenant must exist before the owner's membership row can reference it —
+  // so the user row is written first, the tenant second, the membership last.
+  // Same order registerCoaching uses.
   const [existingOwner] = await db.select({ id: users.id }).from(users).where(eq(users.email, ownerEmail)).limit(1)
   let ownerId: string
   if (existingOwner) {
@@ -447,14 +446,12 @@ async function createCoaching(b: Record<string, string>) {
       name: b.ownerName?.trim() || `${name} Owner`,
       emailVerified: true,
       isProfileComplete: true,
-      role: 'coaching_owner',
       signupIntent: 'coaching_owner',
     })
     await setPassword(ownerId, password)
   }
 
   const tenant = await createTenant({ slug, name, ownerId })
-  await db.update(users).set({ tenantId: tenant.id, role: 'coaching_owner' }).where(eq(users.id, ownerId))
   await ensureMembership(ownerId, tenant.id, 'coaching_owner')
 
   return { tenantId: tenant.id, slug: tenant.slug, ownerEmail, message: `Coaching '${name}' created.` }
@@ -471,9 +468,7 @@ async function createTeacher(b: Record<string, string>) {
     password: req(b.password, 'Password'),
     resetPassword: true,
   })
-  if (result.status === 'conflict') throw new Bad(`${email} ${result.note}`)
-  // An existing student being promoted keeps their sessions; only the role moves.
-  await db.update(users).set({ role: 'teacher' }).where(eq(users.id, result.id))
+  // An existing student being promoted keeps their sessions; only the membership role moves.
   return { teacherId: result.id, message: `Teacher ${email} ${result.status === 'created' ? 'created' : 'updated'}.` }
 }
 
@@ -526,10 +521,6 @@ async function createStudents(b: Record<string, unknown>) {
       password,
       resetPassword,
     })
-    if (result.status === 'conflict') {
-      rows.push({ email, status: 'skipped', note: result.note })
-      continue
-    }
     const enrolled = await ensureClassMember(classId, result.id)
     rows.push({
       email,
@@ -540,10 +531,9 @@ async function createStudents(b: Record<string, unknown>) {
 
   const created = rows.filter((r) => r.status === 'created').length
   const existed = rows.filter((r) => r.status === 'existed').length
-  const skipped = rows.filter((r) => r.status === 'skipped').length
   return {
     rows,
-    message: `${created} created, ${existed} already existed, ${skipped} skipped.`,
+    message: `${created} created, ${existed} already existed.`,
   }
 }
 

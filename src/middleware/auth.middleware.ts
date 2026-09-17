@@ -10,7 +10,10 @@ import type { Role } from '../modules/auth/auth.types.js'
 export async function authenticate(req: FastifyRequest, _reply: FastifyReply): Promise<void> {
   const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) })
   if (!session) throw Errors.UNAUTHORIZED()
-  req.user = { id: session.user.id, role: ((session.user as { role?: Role }).role ?? 'student') as Role }
+  // Better Auth still exposes this on the session as `role` (see the
+  // `fieldName` mapping in config/auth.ts) even though the column behind it is
+  // `users.accountRole`.
+  req.user = { id: session.user.id, accountRole: ((session.user as { role?: Role }).role ?? 'student') as Role }
   // When the operator actually signed in — not when the session was last refreshed.
   // Better Auth extends `expiresAt` on activity but leaves `createdAt` alone, which
   // is the only reason a "re-authenticate every N hours" rule can mean anything:
@@ -23,18 +26,18 @@ export async function authenticate(req: FastifyRequest, _reply: FastifyReply): P
 export function requireRole(...roles: Role[]) {
   return async (req: FastifyRequest, _reply: FastifyReply): Promise<void> => {
     if (!req.user) throw new AppError('UNAUTHORIZED', 'Authentication required', 401)
-    if (!roles.includes(req.user.role)) {
+    if (!roles.includes(req.user.accountRole)) {
       throw new AppError('FORBIDDEN', 'Insufficient permissions', 403)
     }
   }
 }
 
-// Checks the user's role in the resolved tenant's memberships table, not the global user.role.
+// Checks the user's role in the resolved tenant's memberships table, not the global user.accountRole.
 // Must run after both `authenticate` and `tenantMiddleware`.
 //
 // The resolved membership role is published on `req.tenantRole` so handlers and
 // services authorise on the role the caller holds *in this coaching*. Reading
-// `req.user.role` for a tenant decision is a bug: the account role is global and
+// `req.user.accountRole` for a tenant decision is a bug: the account role is global and
 // a user can own one coaching while teaching in another.
 //
 // Returned as a named function so a route's preHandler chain can be inspected:

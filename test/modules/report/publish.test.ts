@@ -201,7 +201,7 @@ describe('createReportForSession — tenant isolation', () => {
     })
     await createReportForSession(session.id)
 
-    const otherStudent = await createTestUser({ role: 'student', tenantId: tenant.id })
+    const otherStudent = await createTestUser()
     const stolen = await getReportForStudent(session.id, otherStudent.id)
     expect(stolen).toBeNull()
   })

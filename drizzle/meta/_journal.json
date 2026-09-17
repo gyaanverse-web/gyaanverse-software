@@ -176,6 +176,13 @@
       "when": 1789573806989,
       "tag": "0024_flaky_sasquatch",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789623429598,
+      "tag": "0025_retire_user_tenant_vestige",
+      "breakpoints": true
     }
   ]
 }

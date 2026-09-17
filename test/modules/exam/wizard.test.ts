@@ -170,7 +170,7 @@ describe('saveWizardState — close the tab, come back tomorrow', () => {
 
   it('CRITICAL: another teacher cannot autosave over my draft', async () => {
     const { tenant, teacher } = await seedTenantWithUsers('pro')
-    const colleague = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const colleague = await createTestUser()
     await createMembership({ userId: colleague.id, tenantId: tenant.id, role: 'teacher' })
     const draft = await startWizardDraft({
       tenantId: tenant.id, createdBy: teacher.id, requesterRole: 'teacher',

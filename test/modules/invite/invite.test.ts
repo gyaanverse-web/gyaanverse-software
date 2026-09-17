@@ -3,7 +3,6 @@ import { eq } from 'drizzle-orm'
 import { db } from '@shared/db.js'
 import { invites } from '@modules/invite/invite.schema.js'
 import { memberships } from '@modules/membership/membership.schema.js'
-import { users } from '@modules/auth/auth.schema.js'
 import { acceptInvite, revokeInvite, getInvitePreview } from '@modules/invite/invite.service.js'
 import {
   createTestInvite,
@@ -12,7 +11,7 @@ import {
 } from '../../helpers/fixtures.js'
 
 describe('acceptInvite', () => {
-  it('happy path: inserts membership, updates user, marks invite accepted — all atomic', async () => {
+  it('happy path: inserts membership, marks invite accepted — atomic', async () => {
     const { tenant, owner } = await seedTenantWithUsers()
     const teacherUser = await createTestUser({ email: 'teach@x.com' })
     const invite = await createTestInvite({
@@ -32,11 +31,6 @@ describe('acceptInvite', () => {
       .where(eq(memberships.userId, teacherUser.id))
     expect(m.role).toBe('teacher')
     expect(m.tenantId).toBe(tenant.id)
-
-    // User row updated
-    const [u] = await db.select().from(users).where(eq(users.id, teacherUser.id))
-    expect(u.role).toBe('teacher')
-    expect(u.tenantId).toBe(tenant.id)
 
     // Invite marked accepted
     const [i] = await db.select().from(invites).where(eq(invites.id, invite.id))

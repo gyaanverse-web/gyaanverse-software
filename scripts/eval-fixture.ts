@@ -127,7 +127,8 @@ if (!tenant) {
 const [teacher] = await db
   .select({ id: users.id })
   .from(users)
-  .where(and(eq(users.tenantId, tenant.id), eq(users.role, 'teacher')))
+  .innerJoin(memberships, eq(memberships.userId, users.id))
+  .where(and(eq(memberships.tenantId, tenant.id), eq(memberships.role, 'teacher')))
   .limit(1)
 
 if (!teacher) {

@@ -16,7 +16,7 @@ async function addStudent(
   tenantId: string,
   opts: { name?: string; classId?: string; status?: 'pending' | 'approved' | 'rejected' } = {},
 ) {
-  const s = await createTestUser({ role: 'student', tenantId, name: opts.name })
+  const s = await createTestUser({ name: opts.name })
   await createMembership({ userId: s.id, tenantId, role: 'student' })
   if (opts.classId) {
     await enrollStudent({ classId: opts.classId, studentId: s.id, status: opts.status ?? 'approved' })
@@ -78,7 +78,7 @@ describe('getClassesForStudent', () => {
 
   it('attaches the batch teacher name', async () => {
     const { tenant, student } = await seedTenantWithUsers()
-    const teacher = await createTestUser({ role: 'teacher', tenantId: tenant.id, name: 'Rita Bose' })
+    const teacher = await createTestUser({ name: 'Rita Bose' })
     await createMembership({ userId: teacher.id, tenantId: tenant.id, role: 'teacher' })
     const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
     await enrollStudent({ classId: cls.id, studentId: student.id })

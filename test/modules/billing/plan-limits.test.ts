@@ -50,7 +50,7 @@ describe('assertWithinLimit — students', () => {
 
     // Top up to exactly the limit
     for (let i = 0; i < limit - 1; i++) {
-      const u = await createTestUser({ role: 'student' })
+      const u = await createTestUser()
       await createMembership({ userId: u.id, tenantId: tenant.id, role: 'student' })
     }
 
@@ -67,7 +67,7 @@ describe('assertWithinLimit — students', () => {
 
     // Add 50 students to tenant B
     for (let i = 0; i < 50; i++) {
-      const u = await createTestUser({ role: 'student' })
+      const u = await createTestUser()
       await createMembership({ userId: u.id, tenantId: b.tenant.id, role: 'student' })
     }
 
@@ -82,14 +82,14 @@ describe('assertWithinLimit — teachers', () => {
 
     // Add 3 more teachers (1 already from seed → 4 total, still under 5)
     for (let i = 0; i < 3; i++) {
-      const u = await createTestUser({ role: 'teacher' })
+      const u = await createTestUser()
       await createMembership({ userId: u.id, tenantId: tenant.id, role: 'teacher' })
     }
 
     await expect(assertWithinLimit(tenant.id, 'teachers')).resolves.toBeUndefined()
 
     // Add 1 more → 5 total → at the cap → should reject
-    const fifth = await createTestUser({ role: 'teacher' })
+    const fifth = await createTestUser()
     await createMembership({ userId: fifth.id, tenantId: tenant.id, role: 'teacher' })
 
     await expect(assertWithinLimit(tenant.id, 'teachers')).rejects.toMatchObject({
@@ -127,7 +127,7 @@ describe('assertWithinLimit — plan tiers', () => {
 
     // Add 50 students; free would reject, starter should allow
     for (let i = 0; i < 50; i++) {
-      const u = await createTestUser({ role: 'student' })
+      const u = await createTestUser()
       await createMembership({ userId: u.id, tenantId: tenant.id, role: 'student' })
     }
     await expect(assertWithinLimit(tenant.id, 'students')).resolves.toBeUndefined()
@@ -223,7 +223,7 @@ describe('billing disabled', () => {
   it('enforces no limit, however far past the cap the tenant is', async () => {
     const { tenant } = await seedTenantWithUsers('free') // students limit: 30
     for (let i = 0; i < PLANS.free.limits.students; i++) {
-      const u = await createTestUser({ role: 'student' })
+      const u = await createTestUser()
       await createMembership({ userId: u.id, tenantId: tenant.id, role: 'student' })
     }
 

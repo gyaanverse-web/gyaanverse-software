@@ -276,6 +276,11 @@ export async function examRoutes(app: FastifyInstance) {
     if (req.tenantRole! === 'student') {
       const { lang } = req.query as { lang?: string }
       const exam = await getExamForStudent(id, user.id, lang)
+      // canStudentAccess only checks class membership, not this route's own
+      // tenant — safe today because a class's exams are always in the class's
+      // own tenant, but the /tenant/* prefix promises this check regardless of
+      // that invariant holding elsewhere (multi-tenancy audit F-9).
+      if (exam.tenantId !== tenant.id) throw Errors.NOT_FOUND('Exam')
       return reply.send({ exam })
     }
     const exam = await getExamFull(id, tenant.id, user.id, req.tenantRole!)

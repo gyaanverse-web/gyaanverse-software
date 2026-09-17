@@ -28,8 +28,8 @@ async function seedExamWithTwoReports() {
 
   // Deliberately inserted Z-then-A so a name sort is distinguishable from
   // insertion order.
-  const zoya = await createTestUser({ role: 'student', tenantId: tenant.id, name: 'Zoya Khan' })
-  const aarav = await createTestUser({ role: 'student', tenantId: tenant.id, name: 'Aarav Mehta' })
+  const zoya = await createTestUser({ name: 'Zoya Khan' })
+  const aarav = await createTestUser({ name: 'Aarav Mehta' })
 
   for (const [s, score] of [[zoya, 4], [aarav, 9]] as const) {
     const session = await createTestSession({
@@ -67,7 +67,7 @@ describe('listReportsForExam — teacher review list', () => {
 
   it('CRITICAL: a teacher cannot read reports for another teacher\'s exam', async () => {
     const { tenant, exam } = await seedExamWithTwoReports()
-    const otherTeacher = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const otherTeacher = await createTestUser()
 
     await expect(
       listReportsForExam(exam.id, tenant.id, otherTeacher.id, 'teacher'),
@@ -82,7 +82,7 @@ describe('listSessionsAwaitingReport — accounting for the rest of the roster',
 
   it('names a submitted student who has no report yet', async () => {
     const { tenant, teacher, exam } = await seedExamWithTwoReports()
-    const priya = await createTestUser({ role: 'student', tenantId: tenant.id, name: 'Priya Rao' })
+    const priya = await createTestUser({ name: 'Priya Rao' })
     await createTestSession({
       examId: exam.id, studentId: priya.id, tenantId: tenant.id,
       totalMarks: 10, status: 'submitted',
@@ -100,7 +100,7 @@ describe('listSessionsAwaitingReport — accounting for the rest of the roster',
     // a Gyaanverse operator" would tell the teacher exactly whose answer the AI
     // could not read — the failure visibility Phase 8 removed, one screen along.
     const { tenant, teacher, exam } = await seedExamWithTwoReports()
-    const priya = await createTestUser({ role: 'student', tenantId: tenant.id, name: 'Priya Rao' })
+    const priya = await createTestUser({ name: 'Priya Rao' })
     await createTestSession({
       examId: exam.id, studentId: priya.id, tenantId: tenant.id,
       totalMarks: 10, status: 'evaluated',
@@ -118,7 +118,7 @@ describe('listSessionsAwaitingReport — accounting for the rest of the roster',
     // missing report, and the teacher must not be able to tell them apart.
     const { tenant, teacher, exam } = await seedExamWithTwoReports()
     for (const [name, status] of [['Ana One', 'submitted'], ['Bo Two', 'evaluated']] as const) {
-      const s = await createTestUser({ role: 'student', tenantId: tenant.id, name })
+      const s = await createTestUser({ name })
       await createTestSession({
         examId: exam.id, studentId: s.id, tenantId: tenant.id, totalMarks: 10, status,
       })
@@ -149,7 +149,7 @@ describe('listSessionsAwaitingReport — accounting for the rest of the roster',
     // into a roster of everyone who ever opened the paper.
     const { tenant, teacher, exam } = await seedExamWithTwoReports()
     for (const status of ['in_progress', 'abandoned'] as const) {
-      const s = await createTestUser({ role: 'student', tenantId: tenant.id })
+      const s = await createTestUser()
       await createTestSession({
         examId: exam.id, studentId: s.id, tenantId: tenant.id, totalMarks: 10, status,
       })
@@ -162,7 +162,7 @@ describe('listSessionsAwaitingReport — accounting for the rest of the roster',
 
   it('CRITICAL: honours the same authorship guard as the reports list', async () => {
     const { tenant, exam } = await seedExamWithTwoReports()
-    const otherTeacher = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const otherTeacher = await createTestUser()
 
     await expect(
       listSessionsAwaitingReport(exam.id, tenant.id, otherTeacher.id, 'teacher'),

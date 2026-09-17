@@ -186,7 +186,7 @@ describe('saveAnswer', () => {
     const session = await createTestSession({
       examId: exam.id, studentId: student.id, tenantId: tenant.id, status: 'in_progress',
     })
-    const attacker = await createTestUser({ role: 'student' })
+    const attacker = await createTestUser()
 
     await expect(
       saveAnswer(session.id, attacker.id, q.id, { text: 'hax' }),
@@ -286,7 +286,7 @@ describe('submitSession', () => {
     const session = await createTestSession({
       examId: exam.id, studentId: student.id, tenantId: tenant.id, status: 'in_progress',
     })
-    const attacker = await createTestUser({ role: 'student' })
+    const attacker = await createTestUser()
 
     await expect(submitSession(session.id, attacker.id)).rejects.toMatchObject({
       code: 'NOT_FOUND',

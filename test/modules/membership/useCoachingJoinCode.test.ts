@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '@shared/db.js'
 import { memberships, coachingJoinCodes } from '@modules/membership/membership.schema.js'
-import { users } from '@modules/auth/auth.schema.js'
 import {
   useCoachingJoinCode,
   previewCoachingJoinCode,
@@ -17,9 +16,9 @@ import {
 } from '../../helpers/fixtures.js'
 
 describe('useCoachingJoinCode', () => {
-  it('happy path: inserts membership, updates user, increments usedCount', async () => {
+  it('happy path: inserts membership, increments usedCount', async () => {
     const { tenant, owner } = await seedTenantWithUsers()
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
     const code = await createTestCoachingJoinCode({
       tenantId: tenant.id,
       createdBy: owner.id,
@@ -37,10 +36,6 @@ describe('useCoachingJoinCode', () => {
       .where(eq(memberships.userId, student.id))
     expect(m.role).toBe('student')
     expect(m.tenantId).toBe(tenant.id)
-
-    // User updated
-    const [u] = await db.select().from(users).where(eq(users.id, student.id))
-    expect(u.tenantId).toBe(tenant.id)
 
     // usedCount bumped
     const [c] = await db

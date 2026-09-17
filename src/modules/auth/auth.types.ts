@@ -12,8 +12,7 @@ export interface User {
   phoneNumber: string | null
   phoneNumberVerified: boolean
   isProfileComplete: boolean
-  role: Role
+  accountRole: Role
   signupIntent: SignupIntent
-  tenantId: string | null
   createdAt: Date
 }

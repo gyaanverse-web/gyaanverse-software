@@ -88,7 +88,7 @@ describe('getAnswerUploadSignature — session ownership', () => {
       examId: exam.id, studentId: student.id, tenantId: tenant.id, status: 'in_progress',
     })
 
-    const attacker = await createTestUser({ role: 'student' })
+    const attacker = await createTestUser()
 
     await expect(
       getAnswerUploadSignature({

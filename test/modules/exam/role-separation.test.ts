@@ -231,7 +231,7 @@ describe('the teacher cannot make review or live decisions', () => {
 describe('teachers are isolated from each other', () => {
   it('CRITICAL: a teacher cannot edit a colleague\'s paper', async () => {
     const { tenant, teacher } = await seedTenantWithUsers('pro')
-    const colleague = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const colleague = await createTestUser()
     await createMembership({ userId: colleague.id, tenantId: tenant.id, role: 'teacher' })
 
     const exam = await createTestExam({ tenantId: tenant.id, createdBy: teacher.id, status: 'draft' })

@@ -9,6 +9,7 @@ import {
   addTeacher,
   joinAsStudent,
   getMyTenant,
+  listMyMemberships,
   listMembers,
   listTeachersWithWorkload,
   removeMember,
@@ -23,6 +24,7 @@ import {
   SLUG_MAX_LENGTH,
   SLUG_PATTERN,
   slugRejectionReason,
+  isReservedSlug,
 } from '../../config/reserved-slugs.js'
 
 const registerSchema = z.object({
@@ -99,7 +101,7 @@ export async function tenantRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Tenants'],
         summary: 'Get my coaching',
-        description: 'Returns the coaching the request is on (subdomain / `X-Tenant-Slug`), plus `membershipRole` — the role the user holds **in that coaching**. 403 `NOT_A_MEMBER` if they belong to other coachings but not this one; 404 if they belong to none. With no tenant (app host), returns their oldest membership, or 404 if they have none. Gate tenant-scoped UI on `membershipRole`, not on the global session role: the two differ for anyone who belongs to more than one coaching.',
+        description: 'Returns the coaching the request is on (subdomain / `X-Tenant-Slug`), plus `membershipRole` — the role the user holds **in that coaching**. 403 `NOT_A_MEMBER` if they belong to other coachings but not this one; 404 if they belong to none. With no tenant (app host), returns their oldest membership, or 404 if they have none — and also `memberships`, every coaching they belong to, oldest first, for a tenant switcher. Gate tenant-scoped UI on `membershipRole`, not on the global session role: the two differ for anyone who belongs to more than one coaching.',
         security: AUTH,
       },
       // No tenantMiddleware: a tenant is optional here, and an app-host request
@@ -108,7 +110,8 @@ export async function tenantRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const { id: userId } = req.user!
-      const result = await getMyTenant(userId, slugFromRequest(req))
+      const slug = slugFromRequest(req)
+      const result = await getMyTenant(userId, slug)
       if (!result) throw Errors.NOT_FOUND('Coaching')
 
       // Entitlements ride along with the tenant rather than living on their own
@@ -120,7 +123,18 @@ export async function tenantRoutes(app: FastifyInstance) {
       // It also removes the reason the frontend had a copy of the plan matrix:
       // limits now arrive as data, so the client cannot drift from plans.ts.
       const entitlements = await resolveEntitlements(result.tenant.id)
-      reply.send({ tenant: result.tenant, membershipRole: result.membershipRole, entitlements })
+
+      // On the app host there is no single coaching to describe — `result` is
+      // already the "oldest membership" guess. Include every membership too, so
+      // the frontend can offer a real switcher instead of trusting the guess.
+      const memberships = !slug || isReservedSlug(slug) ? await listMyMemberships(userId) : undefined
+
+      reply.send({
+        tenant: result.tenant,
+        membershipRole: result.membershipRole,
+        entitlements,
+        ...(memberships ? { memberships } : {}),
+      })
     },
   )
 

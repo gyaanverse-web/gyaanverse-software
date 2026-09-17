@@ -142,7 +142,7 @@ describe('submitForReview — status guard & re-submission', () => {
     await addQuestion(other.id, tenant.id, teacher.id, 'teacher', mcq)
 
     // A second teacher in the SAME coaching is still not the author.
-    const colleague = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const colleague = await createTestUser()
     await createMembership({ userId: colleague.id, tenantId: tenant.id, role: 'teacher' })
 
     await expect(
