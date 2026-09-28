@@ -69,7 +69,7 @@ export const UNGRADEABLE_ATTEMPTS = 3
 //
 // The agreed answer (client decision, 2026-08-12): keep trying, but only up to
 // these limits. Past them the session is closed anyway, the unread answers are
-// marked `needs_human`, the exam moves on to `ready_to_publish`, and a Gyanverse
+// marked `needs_human`, the exam moves on to `ready_to_publish`, and a Gyaanverse
 // staff member — never the coaching's teacher — grades those answers by hand.
 // Full write-up: docs/decisions/2026-08-12-evaluation-backstop.md.
 
@@ -83,7 +83,7 @@ export const UNGRADEABLE_ATTEMPTS = 3
  * second clock keeps resetting and would never reach six hours).
  *
  * Six hours is chosen so that anything reaching it has already survived every
- * automatic repair the system has, and so a Gyanverse operator still has a
+ * automatic repair the system has, and so a Gyaanverse operator still has a
  * window to step in before a placeholder 0 gets written.
  */
 export const BACKSTOP_AFTER_MS = 6 * 60 * 60 * 1000

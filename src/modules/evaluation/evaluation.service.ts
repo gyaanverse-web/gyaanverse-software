@@ -11,8 +11,9 @@ import { getLimitUsage } from '@modules/billing/billing.service.js'
 import { recomputeReportForSession } from '@modules/report/report.service.js'
 import { assertResultsVisible } from '@modules/exam/exam.service.js'
 import { buildOcrFriendlyUrl } from '@modules/storage/index.js'
-import { evaluateSteps, indexDocuments as engineIndexDocuments } from './evaluation.engine.js'
+import { evaluateSteps } from './evaluation.engine.js'
 import { hasGradeableText, ocrImageCached } from './evaluation.ocr.js'
+import { BLANK_PAGE_AUTO_ZERO_REASON, isConfirmedBlankPage } from './evaluation.blank-page.js'
 import { countOpenReviewsForExam } from './evaluation.review.js'
 import {
   EVALUATION_JOB_OPTS,
@@ -23,7 +24,6 @@ import {
 import type {
   AiFeedbackPayload,
   EngineEvaluatedStep,
-  EngineIndexDocument,
   EvaluationJobPayload,
   EvaluationJobStatus,
 } from './evaluation.types.js'
@@ -247,6 +247,7 @@ export async function processJob(payload: EvaluationJobPayload): Promise<void> {
     let reused = 0
     let graded = 0
     let ocrCacheHits = 0
+    let blanked = 0
 
     for (const q of subjective) {
       if (!q.answerImageUrl) continue
@@ -278,9 +279,57 @@ export async function processJob(payload: EvaluationJobPayload): Promise<void> {
       // unreadable paper straight through to the grader, which scores it 0.
       // Check the text, not the list.
       if (!hasGradeableText(ocr)) {
-        // This used to write a score of 0 and mark the job completed — a student
-        // silently given nothing, with no warning anywhere. Now it is a failure:
-        // the job is retried, and only once the 3 tries are used up does
+        // OCR found nothing, but that alone does not tell us WHY — a blank page
+        // and a badly-lit photo of a full page both come back this way. Ask the
+        // pixel-only detector, which cannot be fooled by lighting or handwriting
+        // it can't read, because it is not trying to read anything: it only
+        // answers "is there ink here at all". See evaluation.blank-page.ts for
+        // why every failure of that call is treated as "not confirmed" rather
+        // than assumed blank.
+        //
+        // Confirmed blank is scored immediately, as a REAL 0 — not a
+        // `needs_human` placeholder. There is nothing for a person to read on a
+        // blank page, so routing it to the review queue would only make a
+        // correct answer wait behind a bounded escalation for no reason. Client
+        // decision, 2026-08-24.
+        if (await isConfirmedBlankPage(ocrUrl)) {
+          const feedback = buildBlankPageFeedback()
+          await db
+            .insert(questionResults)
+            .values({
+              jobId,
+              questionId: q.questionId,
+              score: 0,
+              maxScore: q.marks,
+              aiFeedback: JSON.stringify(feedback),
+              imageUrl: q.answerImageUrl,
+              autoZeroReason: BLANK_PAGE_AUTO_ZERO_REASON,
+            })
+            .onConflictDoUpdate({
+              target: [questionResults.jobId, questionResults.questionId],
+              set: {
+                score: 0,
+                maxScore: q.marks,
+                aiFeedback: JSON.stringify(feedback),
+                imageUrl: q.answerImageUrl,
+                reviewStatus: 'ai',
+                aiScore: null,
+                reviewedBy: null,
+                reviewedAt: null,
+                reviewNote: null,
+                autoZeroReason: BLANK_PAGE_AUTO_ZERO_REASON,
+              },
+            })
+          blanked++
+          continue
+        }
+
+        // Not confirmed blank — the page might genuinely be unreadable (bad
+        // scan, faint pencil, an odd angle) rather than empty, and that case
+        // still deserves a person's judgment, not an automatic 0. This used to
+        // write a score of 0 and mark the job completed — a student silently
+        // given nothing, with no warning anywhere. Now it is a failure: the job
+        // is retried, and only once the 3 tries are used up does
         // `classifyFailure` turn it into `needs_human` for a person to look at.
         throw new AppError(
           'OCR_EMPTY',
@@ -343,6 +392,11 @@ export async function processJob(payload: EvaluationJobPayload): Promise<void> {
             reviewedBy: null,
             reviewedAt: null,
             reviewNote: null,
+            // Same reasoning as `reviewStatus` above, for the other kind of flag:
+            // a genuine re-grade proves this row was never actually blank, so any
+            // earlier auto-zero marker is stale and would otherwise leave a
+            // correctly-graded answer sitting in the blank-page audit list.
+            autoZeroReason: null,
           },
         })
     }
@@ -360,7 +414,7 @@ export async function processJob(payload: EvaluationJobPayload): Promise<void> {
     const aiTotal = rollup?.total ?? 0
 
     console.log(
-      `[evaluation] job=${jobId} graded=${graded} reused=${reused} ` +
+      `[evaluation] job=${jobId} graded=${graded} reused=${reused} blanked=${blanked} ` +
         `ocrCacheHits=${ocrCacheHits} score=${aiTotal}`,
     )
 
@@ -415,7 +469,16 @@ export async function processJob(payload: EvaluationJobPayload): Promise<void> {
     // ── SOMETHING WENT WRONG ────────────────────────────────────────────────
     // Everything below records WHAT went wrong and WHEN to try again. It does
     // not decide those things itself — evaluation.retry.ts does.
-    const message = err instanceof Error ? err.message : String(err)
+    //
+    // A DB failure's `.message` is USELESS on its own: drizzle's
+    // DrizzleQueryError always sets it to the literal query text and params, no
+    // matter what actually went wrong. The real Postgres error — constraint
+    // name, SQLSTATE, detail — is on `.cause`. Without unwrapping it here, every
+    // insert failure logs as the same generic "Failed query: ..." forever and
+    // there is no way to tell a foreign-key violation from a missing index from
+    // an actual outage.
+    const cause = err instanceof Error && err.cause instanceof Error ? err.cause : undefined
+    const message = cause ? `${cause.message} (${err instanceof Error ? err.message : String(err)})` : err instanceof Error ? err.message : String(err)
     const code = err instanceof AppError ? err.code : 'UNKNOWN'
     const failureClass = classifyFailure(code, attemptsMade)
     const terminal = isTerminal(failureClass)
@@ -533,10 +596,41 @@ function buildFeedbackPayload(steps: EngineEvaluatedStep[]): AiFeedbackPayload {
   return { steps, topics, summary }
 }
 
+/**
+ * The feedback payload for a question the pixel detector confirmed blank.
+ * Shaped exactly like `buildFeedbackPayload`'s output — same `steps` array the
+ * student report screen already knows how to render, one description shown
+ * as the reason marks were lost — so nothing downstream needs a new case.
+ */
+function buildBlankPageFeedback(): AiFeedbackPayload {
+  const step: EngineEvaluatedStep = {
+    stepId: '1',
+    text: '',
+    step_status: 'wrong',
+    step_weight: 1,
+    topic: 'General',
+    step_understanding: 'No answer was written on this page.',
+    description: 'Missing: no working is visible on the page; Correct step: write your answer before submitting.',
+  }
+  return {
+    steps: [step],
+    topics: [],
+    summary: {
+      totalSteps: 1,
+      rightSteps: 0,
+      wrongSteps: 1,
+      incompleteSteps: 0,
+      unknownSteps: 0,
+      rightWeight: 0,
+      totalWeight: 1,
+    },
+  }
+}
+
 // ── Reading data back out (for the API) ───────────────────────────────────
 
 /**
- * Translate the internal job status into what people outside Gyanverse are
+ * Translate the internal job status into what people outside Gyaanverse are
  * allowed to see. It maps `failed` → `processing` and passes everything else
  * through unchanged.
  *
@@ -549,7 +643,7 @@ function buildFeedbackPayload(steps: EngineEvaluatedStep[]): AiFeedbackPayload {
  * stopped checking for updates and sat on "Pending" forever.
  *
  * The genuinely finished failures collapse the same way on purpose. A job the
- * backstop closes out STAYS at `failed`, with its answers flagged for a Gyanverse
+ * backstop closes out STAYS at `failed`, with its answers flagged for a Gyaanverse
  * operator — so "still being worked on" is the honest reading of a `failed` row,
  * not a white lie.
  *
@@ -587,7 +681,7 @@ export async function getJobStatus(sessionId: string) {
  *
  * A spread is also unsafe in the future tense: the next column anyone adds to the
  * table would start leaking automatically, with nobody noticing. The diagnostic
- * view of a job lives at `/internal/evaluation/*`, for Gyanverse staff only.
+ * view of a job lives at `/internal/evaluation/*`, for Gyaanverse staff only.
  */
 export async function getJobForTenant(jobId: string, tenantId: string) {
   const [job] = await db
@@ -662,14 +756,14 @@ export async function getSessionEvaluation(sessionId: string, studentId: string)
  * Evaluation" panel.
  *
  * IT REPORTS PROGRESS ONLY: how many sessions are done, and how many answers
- * Gyanverse is finishing by hand. No error messages, no error codes, no job ids.
+ * Gyaanverse is finishing by hand. No error messages, no error codes, no job ids.
  *
  * It used to also return every failed job so the teacher could press a retry
  * button. That existed because, back then, a crashed evaluation really would
  * hold an exam in `under_evaluation` forever with nothing anyone could click.
  * The reconciler and the backstop removed that dead end, and with it the reason
  * to ever tell a teacher the AI failed: retrying is now the system's job, and
- * the one case a machine cannot finish goes to Gyanverse staff, not to the
+ * the one case a machine cannot finish goes to Gyaanverse staff, not to the
  * coaching.
  *
  * ⚠️ Adding a failure count back into this response is not a small change — it
@@ -695,7 +789,7 @@ export async function getExamEvaluationProgress(examId: string, tenantId: string
     .from(examSessions)
     .where(eq(examSessions.examId, examId))
 
-  // Answers the backstop parked for a Gyanverse operator.
+  // Answers the backstop parked for a Gyaanverse operator.
   //
   // This is the only number here the teacher can do nothing about, and the only
   // one that keeps `publishResults` locked — so the UI needs it in order to
@@ -732,21 +826,6 @@ export async function getExamEvaluationProgress(examId: string, tenantId: string
 // `evaluation.ops.ts`: `super_admin` only, works across coachings, recorded in
 // the audit log, and it deliberately KEEPS the error history that the old
 // teacher-facing version used to wipe.
-
-// ── Syllabus indexing (the AI's reference material) ───────────────────────
-//
-// Uploads a coaching's syllabus text into the vector database, so the grader can
-// check a student's answer against the material it was actually taught from.
-// This is the one function here that has nothing to do with grading a paper.
-
-export async function indexSyllabus(params: {
-  documents: EngineIndexDocument[]
-  collectionName?: string
-}) {
-  if (!params.documents || params.documents.length === 0)
-    throw Errors.VALIDATION('documents must be a non-empty list')
-  return engineIndexDocuments(params)
-}
 
 // ── Small helpers ─────────────────────────────────────────────────────────
 

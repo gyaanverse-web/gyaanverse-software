@@ -10,10 +10,10 @@ import { Pool } from 'pg'
 dotenv.config()
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mint a Gyanverse platform operator.
+// Mint a Gyaanverse platform operator.
 //
 //   npm run ops:promote -- --list                 # who is a super_admin today
-//   npm run ops:promote -- someone@gyanverse.com  # promote
+//   npm run ops:promote -- someone@gyaanverse.com  # promote
 //   npm run ops:promote -- someone@… --demote     # take it back
 //   npm run ops:promote -- someone@… --yes        # skip the confirmation
 //   npm run ops:promote -- someone@… --force      # override the safety refusals
@@ -67,13 +67,12 @@ interface UserRow {
   email: string
   role: string
   email_verified: boolean
-  tenant_id: string | null
 }
 
 async function showOperators(): Promise<number> {
   const { rows } = await pool.query<UserRow>(
-    `select id, name, email, role, email_verified, tenant_id
-       from users where role = 'super_admin' order by created_at`,
+    `select id, name, email, account_role as role, email_verified
+       from users where account_role = 'super_admin' order by created_at`,
   )
   if (rows.length === 0) {
     console.log('\n  No platform operators exist.')
@@ -101,7 +100,7 @@ async function main(): Promise<void> {
   }
 
   const { rows } = await pool.query<UserRow>(
-    `select id, name, email, role, email_verified, tenant_id from users where lower(email) = $1`,
+    `select id, name, email, account_role as role, email_verified from users where lower(email) = $1`,
     [email],
   )
   const user = rows[0]
@@ -134,8 +133,7 @@ async function main(): Promise<void> {
 
     // Someone who runs a coaching AND operates the platform can silently rewrite
     // scores inside their own coaching through a cross-tenant endpoint their
-    // teachers cannot see. Separately, `role` is what the frontend navigates on,
-    // so overwriting 'coaching_owner' changes which app they land in.
+    // teachers cannot see.
     const { rows: owned } = await pool.query<{ n: string }>(
       `select count(*)::text as n from tenants where owner_id = $1`,
       [user.id],
@@ -152,7 +150,7 @@ async function main(): Promise<void> {
       console.error('  A platform operator who is also inside a tenant can override marks in their own')
       console.error("  coaching through a cross-tenant route, and promoting them overwrites the account")
       console.error('  role their app navigation depends on.')
-      console.error('  Use a dedicated Gyanverse staff account, or --force if you accept both.\n')
+      console.error('  Use a dedicated Gyaanverse staff account, or --force if you accept both.\n')
       process.exitCode = 1
       return
     }
@@ -177,7 +175,7 @@ async function main(): Promise<void> {
     }
   }
 
-  await pool.query(`update users set role = $1, updated_at = now() where id = $2`, [nextRole, user.id])
+  await pool.query(`update users set account_role = $1, updated_at = now() where id = $2`, [nextRole, user.id])
 
   // The role change is the security event; recording it here means the trail
   // starts at the moment the account gained its power, not at its first override.

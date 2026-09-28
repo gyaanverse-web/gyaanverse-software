@@ -14,7 +14,9 @@ import { evaluationRoutes } from './modules/evaluation/evaluation.routes.js'
 import { evaluationInternalRoutes } from './modules/evaluation/evaluation.internal.routes.js'
 import { storageRoutes } from './modules/storage/storage.routes.js'
 import { reportRoutes } from './modules/report/report.routes.js'
+import { feeRoutes } from './modules/fee/fee.routes.js'
 import { examReviewRoutes } from './modules/exam-review/exam-review.routes.js'
+import { platformRoutes } from './modules/platform/platform.routes.js'
 import { registerBullBoard } from './config/bull-board.js'
 import { registerApiDocs } from './config/docs.js'
 import cors from '@fastify/cors'
@@ -74,7 +76,9 @@ export async function buildApp() {
     origin: isDev ? true : prodOrigins,
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug'],
+    // Idempotency-Key: POST /tenant/fees/payments refuses to run without it,
+    // so a browser that can't send it cross-origin can never record a payment.
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug', 'Idempotency-Key'],
   })
   // Disable CSP in dev so the Swagger UI (inline scripts/styles) loads without issues
   await app.register(helmet, {
@@ -176,11 +180,13 @@ export async function buildApp() {
   await app.register(paymentRoutes)
   await app.register(notificationRoutes)
   await app.register(evaluationRoutes)
-  // Gyanverse platform ops — cross-tenant, super_admin only, hidden from Swagger.
+  // Gyaanverse platform ops — cross-tenant, super_admin only, hidden from Swagger.
   await app.register(evaluationInternalRoutes)
   await app.register(storageRoutes)
   await app.register(reportRoutes)
+  await app.register(feeRoutes)
   await app.register(examReviewRoutes)
+  await app.register(platformRoutes)
 
   return app
 }

@@ -100,8 +100,8 @@ export async function reportRoutes(app: FastifyInstance) {
     const tenant = req.tenant!
     const user = req.user!
     const [reports, awaitingReport] = await Promise.all([
-      listReportsForExam(examId, tenant.id, user.id, user.role),
-      listSessionsAwaitingReport(examId, tenant.id, user.id, user.role),
+      listReportsForExam(examId, tenant.id, user.id, req.tenantRole!),
+      listSessionsAwaitingReport(examId, tenant.id, user.id, req.tenantRole!),
     ])
     return { reports, awaitingReport }
   })

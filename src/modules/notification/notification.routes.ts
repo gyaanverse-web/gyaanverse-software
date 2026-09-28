@@ -1,9 +1,9 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { authenticate, requireTenantRole } from '@middleware/auth.middleware.js'
 import { tenantMiddleware } from '@middleware/tenant.middleware.js'
 import { Errors } from '@shared/errors.js'
-import { createSubscriberConnection } from './notification.redis.js'
+import { allTenantsChannelPattern, createSubscriberConnection, notificationChannel } from './notification.redis.js'
 import {
   getNotifications,
   getUnreadCount,
@@ -85,10 +85,11 @@ export async function notificationRoutes(app: FastifyInstance) {
     raw.flushHeaders()
     raw.write(':\n\n')
 
+    // No tenant on the app host — every tenant's channel for this user.
     const subscriber = createSubscriberConnection()
-    await subscriber.subscribe(`notif:${user.id}`)
+    await subscriber.psubscribe(allTenantsChannelPattern(user.id))
 
-    subscriber.on('message', (_channel, payload) => {
+    subscriber.on('pmessage', (_pattern, _channel, payload) => {
       raw.write(`data: ${payload}\n\n`)
     })
 
@@ -102,7 +103,7 @@ export async function notificationRoutes(app: FastifyInstance) {
     })
 
     clearInterval(heartbeat)
-    await subscriber.unsubscribe()
+    await subscriber.punsubscribe()
     subscriber.disconnect()
     if (!raw.writableEnded) raw.end()
   })
@@ -199,7 +200,7 @@ export async function notificationRoutes(app: FastifyInstance) {
 
   // ── SSE stream — must be registered before /:id routes ───────────────────
   // One SSE connection per tenant tab; Redis pub/sub fans in-app notifications
-  // to any live connection for this user.
+  // for THIS tenant (plus platform-level ones) to any live connection for this user.
 
   app.get('/tenant/notifications/stream', {
     schema: {
@@ -211,6 +212,7 @@ export async function notificationRoutes(app: FastifyInstance) {
     preHandler: tenantMember,
   }, async (req, reply) => {
     const user = req.user!
+    const tenant = req.tenant!
 
     // Hijack response so Fastify doesn't auto-finalize it.
     // reply.hijack() bypasses @fastify/cors onSend hook, so we must write CORS
@@ -232,8 +234,13 @@ export async function notificationRoutes(app: FastifyInstance) {
     // Initial ping so client confirms the connection is open
     raw.write(':\n\n')
 
+    // This tenant's channel plus platform-level (tenant-less) notifications —
+    // the same `tenantId = $t OR tenantId IS NULL` rule the list query applies.
     const subscriber = createSubscriberConnection()
-    await subscriber.subscribe(`notif:${user.id}`)
+    await subscriber.subscribe(
+      notificationChannel(user.id, tenant.id),
+      notificationChannel(user.id, null),
+    )
 
     subscriber.on('message', (_channel, payload) => {
       raw.write(`data: ${payload}\n\n`)
@@ -314,42 +321,36 @@ export async function notificationRoutes(app: FastifyInstance) {
   })
 
   // ── Preferences ───────────────────────────────────────────────────────────
+  //
+  // Registered on BOTH the tenant and the bare path, like every other route in
+  // this file, because a preference belongs to a USER and not to a coaching —
+  // `getPreferences` keys on `user.id` alone. The tenant-only registration this
+  // replaces meant a student who had not joined a coaching (a state the product
+  // supports throughout) got a 403 from their own preferences screen: the page
+  // swallowed it, drew every switch ON, and then 403'd on each click.
 
-  app.get('/tenant/notifications/preferences', {
-    schema: {
-      tags: ['Notifications'],
-      summary: 'Get notification preferences',
-      description: 'Returns the user\'s notification channel preferences (email, SMS, in-app) for each notification type.',
-      security: AUTH,
+  const prefsBody = {
+    type: 'object',
+    properties: {
+      emailEnabled: { type: 'boolean' },
+      smsEnabled: { type: 'boolean' },
+      inAppEnabled: { type: 'boolean' },
     },
-    preHandler: tenantMember,
-  }, async (req, reply) => {
+  } as const
+
+  const prefsParams = {
+    type: 'object',
+    required: ['type'],
+    properties: { type: { type: 'string', description: 'Notification type key' } },
+  } as const
+
+  const getPrefsHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     const user = req.user!
     const prefs = await getPreferences(user.id)
     reply.send({ preferences: prefs })
-  })
+  }
 
-  app.patch('/tenant/notifications/preferences/:type', {
-    schema: {
-      tags: ['Notifications'],
-      summary: 'Update notification preferences for a type',
-      security: AUTH,
-      params: {
-        type: 'object',
-        required: ['type'],
-        properties: { type: { type: 'string', description: 'Notification type key' } },
-      },
-      body: {
-        type: 'object',
-        properties: {
-          emailEnabled: { type: 'boolean' },
-          smsEnabled: { type: 'boolean' },
-          inAppEnabled: { type: 'boolean' },
-        },
-      },
-    },
-    preHandler: tenantMember,
-  }, async (req, reply) => {
+  const setPrefsHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     const user = req.user!
     const { type } = req.params as { type: string }
 
@@ -363,5 +364,28 @@ export async function notificationRoutes(app: FastifyInstance) {
 
     await upsertPreference(user.id, type as NotificationType, parsed.data)
     reply.send({ ok: true })
-  })
+  }
+
+  for (const prefix of ['', '/tenant'] as const) {
+    app.get(`${prefix}/notifications/preferences`, {
+      schema: {
+        tags: ['Notifications'],
+        summary: 'Get notification preferences',
+        description: 'Returns the user\'s notification channel preferences (email, SMS, in-app) for each notification type. User-scoped — no coaching membership required.',
+        security: AUTH,
+      },
+      preHandler: authOnly,
+    }, getPrefsHandler)
+
+    app.patch(`${prefix}/notifications/preferences/:type`, {
+      schema: {
+        tags: ['Notifications'],
+        summary: 'Update notification preferences for a type',
+        security: AUTH,
+        params: prefsParams,
+        body: prefsBody,
+      },
+      preHandler: authOnly,
+    }, setPrefsHandler)
+  }
 }

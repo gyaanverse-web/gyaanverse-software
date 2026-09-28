@@ -9,7 +9,7 @@ import type { ExamStatus, WizardState } from './exam.types.js'
 import { examPurchases } from '../payment/payment.schema.js'
 import { examSessions } from '../exam-session/exam-session.schema.js'
 import { reports } from '../report/report.schema.js'
-import { classes, classMembers } from '../class/class.schema.js'
+import { classes, classMembers, classTeachers } from '../class/class.schema.js'
 import { assertWithinLimit, assertHasFeature } from '../billing/billing.service.js'
 import { validateQuestionPayload } from './exam.validators.js'
 import { memberships } from '../membership/membership.schema.js'
@@ -88,14 +88,32 @@ export async function loadVisibleExam(
  * Resolve class ids to rows, asserting every one belongs to the tenant. Used by
  * every path that links an exam to a class (wizard generation, manual linking)
  * so a caller can never attach an exam to another tenant's class by id.
+ *
+ * `assignedTo` narrows it to the batches a teacher is assigned to — every
+ * authoring path passes the author, since a teacher may only target their own
+ * batches. The owner's scheduling path omits it and may pick any class.
  */
-export async function resolveTenantClasses(classIds: string[], tenantId: string) {
+export async function resolveTenantClasses(
+  classIds: string[],
+  tenantId: string,
+  opts: { assignedTo?: string } = {},
+) {
   if (classIds.length === 0) return []
   const rows = await db
     .select({ id: classes.id, name: classes.name, grade: classes.grade })
     .from(classes)
     .where(and(inArray(classes.id, classIds), eq(classes.tenantId, tenantId)))
   if (rows.length !== new Set(classIds).size) throw Errors.NOT_FOUND('Class')
+
+  if (opts.assignedTo) {
+    const assigned = await db
+      .select({ classId: classTeachers.classId })
+      .from(classTeachers)
+      .where(and(eq(classTeachers.teacherId, opts.assignedTo), inArray(classTeachers.classId, classIds)))
+    if (assigned.length !== rows.length) {
+      throw new AppError('CLASS_NOT_ASSIGNED', 'You can only assign exams to classes you teach', 403)
+    }
+  }
   return rows
 }
 
@@ -822,19 +840,19 @@ export async function publishResults(
   // settles the session anyway with a placeholder 0 so this exam is not held
   // hostage — the teacher gets their marks, their roster, their review screen.
   // What it must not do is let that placeholder go out as a real result, so the
-  // last step is held while a Gyanverse operator scores the answer by hand.
+  // last step is held while a Gyaanverse operator scores the answer by hand.
   //
   // Note carefully what this is NOT: the old stall parked the exam in
   // `under_evaluation` with no screen anywhere saying why, and no party
   // responsible for clearing it. This exam is fully evaluated, visible, and
-  // reviewable; only the final click waits, and it waits on Gyanverse, never on
+  // reviewable; only the final click waits, and it waits on Gyaanverse, never on
   // the teacher. The message says so without saying "the AI failed" — which is
   // the whole directive.
   const openReviews = await countOpenReviewsForExam(id)
   if (openReviews > 0)
     throw Errors.VALIDATION(
       `${openReviews} ${openReviews === 1 ? 'answer is' : 'answers are'} still being reviewed by ` +
-        'Gyanverse. Results can be published as soon as that finishes — no action is needed from you.',
+        'Gyaanverse. Results can be published as soon as that finishes — no action is needed from you.',
     )
 
   return transitionExam({
@@ -911,7 +929,16 @@ export async function duplicateExam(
     if (srcChapters.length > 0)
       await tx.insert(examChapters).values(srcChapters.map((c) => ({ examId: copy.id, chapterId: c.chapterId })))
 
-    const srcClasses = await tx.select().from(examClasses).where(eq(examClasses.examId, id))
+    // Carry over only the batches the author still teaches — an assignment the
+    // owner has since removed must not come back through a copy.
+    const srcClasses = await tx
+      .select({ classId: examClasses.classId })
+      .from(examClasses)
+      .innerJoin(
+        classTeachers,
+        and(eq(classTeachers.classId, examClasses.classId), eq(classTeachers.teacherId, requesterId)),
+      )
+      .where(eq(examClasses.examId, id))
     if (srcClasses.length > 0)
       await tx.insert(examClasses).values(srcClasses.map((c) => ({ examId: copy.id, classId: c.classId })))
 
@@ -953,7 +980,7 @@ export async function linkExamToClass(
 ) {
   const exam = await assertExamAuthor(examId, tenantId, requesterId, requesterRole)
   assertExamEditable(exam)
-  await resolveTenantClasses([classId], tenantId)
+  await resolveTenantClasses([classId], tenantId, { assignedTo: requesterId })
 
   const [existing] = await db
     .select({ id: examClasses.id })

@@ -22,7 +22,7 @@ const DIFFICULTIES = ['easy', 'medium', 'hard'] as const
 
 // ── Scope helpers ─────────────────────────────────────────────────────────────
 //
-// `tenantId === null` means the caller is acting in the global (Gyanverse) scope.
+// `tenantId === null` means the caller is acting in the global (Gyaanverse) scope.
 // A non-null UUID means they are acting inside one institute.
 
 // Read access: a tenant sees global content plus its own; the global scope sees

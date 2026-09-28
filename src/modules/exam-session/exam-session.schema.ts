@@ -8,8 +8,8 @@ export const examSessions = pgTable('exam_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
   examId: uuid('exam_id').notNull().references(() => exams.id),
   studentId: uuid('student_id').notNull().references(() => users.id),
-  // null for public-exam students not affiliated with any tenant
-  tenantId: uuid('tenant_id').references(() => tenants.id),
+  // Inherited from exams.tenantId (the exam's owning coaching) — public exams too.
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   attemptNumber: integer('attempt_number').notNull().default(1),
   // 'in_progress' | 'submitted' | 'evaluated' | 'abandoned'
   status: varchar('status', { length: 20 }).notNull().default('in_progress'),

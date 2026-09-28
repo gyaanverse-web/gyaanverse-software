@@ -2,24 +2,42 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { Errors } from '../../shared/errors.js'
 import { authenticate, requireTenantRole } from '../../middleware/auth.middleware.js'
-import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
+import { tenantMiddleware, slugFromRequest } from '../../middleware/tenant.middleware.js'
 import {
   getTenantById,
   registerCoaching,
   addTeacher,
   joinAsStudent,
   getMyTenant,
+  listMyMemberships,
   listMembers,
   listTeachersWithWorkload,
   removeMember,
-  updateSettings,
   updateTenant,
   deleteCoaching,
   upgradePlan,
 } from './tenant.service.js'
+import { resolveEntitlements } from '../billing/billing.service.js'
+import { requireBillingEnabled } from '../billing/billing.guard.js'
+import {
+  SLUG_MIN_LENGTH,
+  SLUG_MAX_LENGTH,
+  SLUG_PATTERN,
+  slugRejectionReason,
+} from '../../config/reserved-slugs.js'
 
 const registerSchema = z.object({
-  slug: z.string().min(3).max(63).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens'),
+  // Shape is checked here for a fast 400; `slugRejectionReason` re-runs the full
+  // rule set (reserved names, punycode prefix) inside the service, which is the
+  // authoritative guard for every caller.
+  slug: z
+    .string()
+    .min(SLUG_MIN_LENGTH)
+    .max(SLUG_MAX_LENGTH)
+    .regex(SLUG_PATTERN, 'Slug must be lowercase letters, numbers, and inner hyphens only')
+    .refine((s) => slugRejectionReason(s) === null, (s) => ({
+      message: slugRejectionReason(s) ?? 'Invalid slug',
+    })),
   name: z.string().min(2).max(255),
 })
 
@@ -29,11 +47,6 @@ const addTeacherSchema = z.object({
 
 const joinSchema = z.object({
   tenantId: z.string().uuid('Invalid tenant ID'),
-})
-
-const settingsSchema = z.object({
-  allowPublicMocks: z.boolean().optional(),
-  customDomain: z.string().nullable().optional(),
 })
 
 const updateTenantSchema = z.object({
@@ -87,16 +100,42 @@ export async function tenantRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Tenants'],
         summary: 'Get my coaching',
-        description: 'Returns the coaching institute the authenticated user belongs to, plus `membershipRole` — the role they hold **in that coaching**. Gate tenant-scoped UI on `membershipRole`, not on the global session role: the two differ for anyone who belongs to more than one coaching.',
+        description: 'Returns the coaching the request is on (subdomain / `X-Tenant-Slug`), plus `membershipRole` — the role the user holds **in that coaching**. 403 `NOT_A_MEMBER` if they belong to other coachings but not this one; 404 if they belong to none. With no tenant (app host), returns their oldest membership instead, or 404 if they have none. Always also includes `memberships`, every coaching the user belongs to (oldest first), so a switcher can be rendered from any page — including inside a coaching the user is already on. Gate tenant-scoped UI on `membershipRole`, not on the global session role: the two differ for anyone who belongs to more than one coaching.',
         security: AUTH,
       },
+      // No tenantMiddleware: a tenant is optional here, and an app-host request
+      // must not 400 for lacking one.
       preHandler: [authenticate],
     },
     async (req, reply) => {
       const { id: userId } = req.user!
-      const result = await getMyTenant(userId)
+      const slug = slugFromRequest(req)
+      const result = await getMyTenant(userId, slug)
       if (!result) throw Errors.NOT_FOUND('Coaching')
-      reply.send({ tenant: result.tenant, membershipRole: result.membershipRole })
+
+      // Entitlements ride along with the tenant rather than living on their own
+      // endpoint. Every screen already fetches this — it is one of the two calls
+      // behind `lib/sessionStore` on the frontend — so the alternative was a
+      // third request on every mount, with its own cache and its own TTL, to
+      // answer a question that is a property of exactly this tenant.
+      //
+      // It also removes the reason the frontend had a copy of the plan matrix:
+      // limits now arrive as data, so the client cannot drift from plans.ts.
+      const entitlements = await resolveEntitlements(result.tenant.id)
+
+      // Always include every coaching the user belongs to, not just the one
+      // this request resolved to — the switcher needs the full list whether
+      // it's rendered on the app host (no single coaching to describe, so
+      // `result` is only the "oldest membership" guess) or inside a coaching
+      // the user is already on (where they may still belong to others).
+      const memberships = await listMyMemberships(userId)
+
+      reply.send({
+        tenant: result.tenant,
+        membershipRole: result.membershipRole,
+        entitlements,
+        memberships,
+      })
     },
   )
 
@@ -189,6 +228,13 @@ export async function tenantRoutes(app: FastifyInstance) {
   )
 
   // Change plan — owner only, no payment required (payment integration skipped for now)
+  //
+  // Gated on `billing_enabled` alongside the billing routes proper. It is not a
+  // billing route by file, but it is the one endpoint that mutates the input the
+  // entitlement resolver reads, and it currently grants any plan for free. With
+  // billing off the resolver ignores `tenants.plan` entirely, so leaving this
+  // open would let an owner change a value that does nothing — and then quietly
+  // takes effect the moment an operator flips the switch.
   app.patch(
     '/tenants/:id/plan',
     {
@@ -210,7 +256,7 @@ export async function tenantRoutes(app: FastifyInstance) {
           },
         },
       },
-      preHandler: [authenticate],
+      preHandler: [requireBillingEnabled, authenticate],
     },
     async (req, reply) => {
       const parsed = upgradePlanSchema.safeParse(req.body)
@@ -257,7 +303,7 @@ export async function tenantRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Tenants'],
         summary: 'Add a teacher to the coaching',
-        description: 'Looks up a user by phone number and adds them as a teacher. The user must already have a Gyanverse account. Enforces the plan\'s teacher limit.',
+        description: 'Looks up a user by phone number and adds them as a teacher. The user must already have a Gyaanverse account. Enforces the plan\'s teacher limit.',
         security: AUTH,
         body: {
           type: 'object',
@@ -350,32 +396,11 @@ export async function tenantRoutes(app: FastifyInstance) {
     },
   )
 
-  // Update coaching settings — coaching_owner only
-  app.patch(
-    '/tenant/settings',
-    {
-      schema: {
-        tags: ['Tenants'],
-        summary: 'Update coaching settings',
-        description: 'Updates tenant-level settings. `allowPublicMocks` requires Starter+ plan. `customDomain` requires Pro plan.',
-        security: AUTH,
-        body: {
-          type: 'object',
-          properties: {
-            allowPublicMocks: { type: 'boolean' },
-            customDomain: { type: 'string', nullable: true },
-          },
-        },
-      },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')],
-    },
-    async (req, reply) => {
-      const parsed = settingsSchema.safeParse(req.body)
-      if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
-
-      const tenant = req.tenant!
-      await updateSettings(tenant.id, parsed.data)
-      reply.send({ success: true })
-    },
-  )
+  // NOTE: there is no `PATCH /tenant/settings`. It carried exactly two fields —
+  // `allowPublicMocks` and `customDomain` — and both wrote columns that nothing in
+  // this codebase ever read. Public-exam publishing is gated on the PLAN FEATURE
+  // `public_mocks` (see `assertHasFeature` in exam.service / exam.generation.service),
+  // never on the tenant flag, and tenant resolution is the `*.gyaanverse.com` slug
+  // wildcard, never a custom domain. The route, the `tenant_settings` table and the
+  // owner-facing form that fed them were removed together in migration 0022.
 }

@@ -3,6 +3,7 @@ import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
 import { examSessions, sessionAnswers } from './exam-session.schema.js'
 import { exams, questions } from '../exam/exam.schema.js'
+import { users } from '../auth/auth.schema.js'
 import { canStudentAccess, assertResultsVisible } from '../exam/exam.service.js'
 import { enqueueEvaluation } from '../evaluation/evaluation.service.js'
 import { gradeQuestion, isObjectiveType } from './exam-session.grader.js'
@@ -12,11 +13,9 @@ import { refreshSuccessRates } from '../question-bank/index.js'
 
 // ── Start session ──────────────────────────────────────────────────────────
 
-export async function startSession(
-  studentId: string,
-  examId: string,
-  tenantId: string | null,
-) {
+// The session's tenant is inherited from the exam, never taken from the
+// request — same rule as reports.tenantId and evaluation_jobs.tenantId.
+export async function startSession(studentId: string, examId: string) {
   const [exam] = await db.select().from(exams).where(eq(exams.id, examId)).limit(1)
   if (!exam) throw Errors.NOT_FOUND('Exam')
   if (exam.status !== 'live')
@@ -70,7 +69,7 @@ export async function startSession(
     .values({
       examId,
       studentId,
-      tenantId,
+      tenantId: exam.tenantId,
       attemptNumber,
       status: 'in_progress',
       startedAt: now,
@@ -350,9 +349,12 @@ export async function listSessionsForExam(
   if (requesterRole !== 'coaching_owner' && exam.createdBy !== requesterId)
     throw new AppError('FORBIDDEN', 'You can only view sessions for exams you created', 403)
 
-  return db
-    .select()
+  const rows = await db
+    .select({ session: examSessions, studentName: users.name })
     .from(examSessions)
+    .innerJoin(users, eq(users.id, examSessions.studentId))
     .where(eq(examSessions.examId, examId))
     .orderBy(desc(examSessions.startedAt))
+
+  return rows.map(r => ({ ...r.session, studentName: r.studentName }))
 }

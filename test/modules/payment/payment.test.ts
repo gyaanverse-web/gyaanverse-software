@@ -42,7 +42,7 @@ describe('createOrder', () => {
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, visibility: 'public_paid', price: '99.00',
     })
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
     mockOrdersCreate.mockResolvedValue({ id: 'order_test123' })
 
     const { createOrder } = await svc()
@@ -63,7 +63,7 @@ describe('createOrder', () => {
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, visibility: 'public_free', price: null,
     })
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
 
     const { createOrder } = await svc()
     await expect(createOrder(student.id, exam.id)).rejects.toMatchObject({
@@ -82,7 +82,7 @@ describe('createOrder', () => {
       visibility: 'private',
       price: '199.00',  // teacher misconfigured this
     })
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
 
     const { createOrder } = await svc()
     await expect(createOrder(student.id, exam.id)).rejects.toMatchObject({
@@ -100,7 +100,7 @@ describe('createOrder', () => {
       visibility: 'public_free',
       price: '99.00',  // misconfigured: public_free shouldn't have a price
     })
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
 
     const { createOrder } = await svc()
     await expect(createOrder(student.id, exam.id)).rejects.toMatchObject({
@@ -113,7 +113,7 @@ describe('createOrder', () => {
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, visibility: 'public_paid', price: '99.00',
     })
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
 
     // Pre-create a successful purchase
     const [p] = await db.insert(payments).values({
@@ -152,7 +152,7 @@ describe('confirmPayment', () => {
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, visibility: 'public_paid', price: '99.00',
     })
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
     await setupOrder({ studentId: student.id, examId: exam.id, orderId: 'order_x' })
 
     const sig = signCheckout('order_x', 'pay_x')
@@ -177,7 +177,7 @@ describe('confirmPayment', () => {
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, visibility: 'public_paid', price: '199.00',
     })
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
     await setupOrder({ studentId: student.id, examId: exam.id, orderId: 'order_race' })
 
     // Simulate the race: between createOrder and confirmPayment, the teacher
@@ -204,7 +204,7 @@ describe('confirmPayment', () => {
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, visibility: 'public_paid', price: '99.00',
     })
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
     await setupOrder({ studentId: student.id, examId: exam.id, orderId: 'order_tampered' })
 
     const real = signCheckout('order_tampered', 'pay_tampered')
@@ -231,7 +231,7 @@ describe('confirmPayment', () => {
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, visibility: 'public_paid', price: '99.00',
     })
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
     await setupOrder({ studentId: student.id, examId: exam.id, orderId: 'order_short' })
 
     const { confirmPayment } = await svc()
@@ -245,8 +245,8 @@ describe('confirmPayment', () => {
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, visibility: 'public_paid', price: '99.00',
     })
-    const buyer = await createTestUser({ role: 'student' })
-    const attacker = await createTestUser({ role: 'student' })
+    const buyer = await createTestUser()
+    const attacker = await createTestUser()
     await setupOrder({ studentId: buyer.id, examId: exam.id, orderId: 'order_steal' })
 
     const sig = signCheckout('order_steal', 'pay_steal')
@@ -261,7 +261,7 @@ describe('confirmPayment', () => {
     const exam = await createTestExam({
       tenantId: tenant.id, createdBy: owner.id, visibility: 'public_paid', price: '99.00',
     })
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
     await setupOrder({ studentId: student.id, examId: exam.id, orderId: 'order_dup' })
 
     const sig = signCheckout('order_dup', 'pay_dup')
@@ -274,7 +274,7 @@ describe('confirmPayment', () => {
   })
 
   it('rejects unknown orderId', async () => {
-    const student = await createTestUser({ role: 'student' })
+    const student = await createTestUser()
     const sig = signCheckout('order_nope', 'pay_nope')
 
     const { confirmPayment } = await svc()

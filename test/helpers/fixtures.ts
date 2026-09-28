@@ -5,14 +5,15 @@
 
 import { eq } from 'drizzle-orm'
 import { db } from '@shared/db.js'
-import { tenants, tenantSettings } from '@modules/tenant/tenant.schema.js'
+import { tenants } from '@modules/tenant/tenant.schema.js'
 import { users } from '@modules/auth/auth.schema.js'
 import { memberships, coachingJoinCodes } from '@modules/membership/membership.schema.js'
-import { classes, classMembers } from '@modules/class/class.schema.js'
+import { classes, classMembers, classTeachers } from '@modules/class/class.schema.js'
 import { exams, questions, examClasses } from '@modules/exam/exam.schema.js'
 import { subjects } from '@modules/question-bank/question-bank.schema.js'
 import { examSessions, sessionAnswers } from '@modules/exam-session/exam-session.schema.js'
 import { evaluationJobs, questionResults } from '@modules/evaluation/evaluation.schema.js'
+import { setPlatformSetting, __clearPlatformCache } from '@modules/platform/platform.service.js'
 import { examPurchases, payments } from '@modules/payment/payment.schema.js'
 import { invites } from '@modules/invite/invite.schema.js'
 import type { PlanName } from '@config/plans.js'
@@ -36,7 +37,7 @@ export async function createTestTenant(overrides: {
   name?: string
 } = {}) {
   const slug = overrides.slug ?? `acme-${uniq()}`
-  const ownerId = overrides.ownerId ?? (await createTestUser({ role: 'coaching_owner' })).id
+  const ownerId = overrides.ownerId ?? (await createTestUser()).id
 
   const [tenant] = await db
     .insert(tenants)
@@ -47,10 +48,6 @@ export async function createTestTenant(overrides: {
       plan: overrides.plan ?? 'free',
     })
     .returning()
-  await db.insert(tenantSettings).values({ tenantId: tenant.id })
-
-  // Backfill the owner's tenantId pointer; matches what registerCoaching does.
-  await db.update(users).set({ tenantId: tenant.id }).where(eq(users.id, ownerId))
 
   return tenant
 }
@@ -58,11 +55,15 @@ export async function createTestTenant(overrides: {
 // ── User ──────────────────────────────────────────────────────────────────
 
 export async function createTestUser(overrides: {
-  role?: 'super_admin' | 'coaching_owner' | 'teacher' | 'student'
+  // Platform-level account role — 'super_admin' or the default 'student'.
+  // A coaching-scoped role ('coaching_owner' | 'teacher' | 'student') belongs
+  // on a `memberships` row (see createMembership / seedTenantWithUsers), never
+  // here — that mirrors what production code writes since the multi-tenancy
+  // audit's Core retirement of `users.tenantId`/`users.role`.
+  accountRole?: 'super_admin' | 'student'
   email?: string
   name?: string
   phoneNumber?: string
-  tenantId?: string
   emailVerified?: boolean
 } = {}) {
   const id = uniq()
@@ -73,8 +74,7 @@ export async function createTestUser(overrides: {
       email: overrides.email ?? `${id}@test.local`,
       emailVerified: overrides.emailVerified ?? true,
       phoneNumber: overrides.phoneNumber ?? null,
-      role: overrides.role ?? 'student',
-      tenantId: overrides.tenantId ?? null,
+      accountRole: overrides.accountRole ?? 'student',
     })
     .returning()
   return user
@@ -93,9 +93,14 @@ export async function createMembership(params: {
 
 // ── Class + class member ──────────────────────────────────────────────────
 
+/**
+ * A batch, with `teacherId` (if given) assigned to it through `class_teachers`.
+ * Inserted directly, so it skips the service's "must be a teacher member"
+ * check — tests that need that rule go through `createClass`/`setClassTeachers`.
+ */
 export async function createTestClass(params: {
   tenantId: string
-  teacherId: string
+  teacherId?: string
   name?: string
   autoApprove?: boolean
 }) {
@@ -103,12 +108,20 @@ export async function createTestClass(params: {
     .insert(classes)
     .values({
       tenantId: params.tenantId,
-      teacherId: params.teacherId,
       name: params.name ?? `Class ${uniq()}`,
       autoApprove: params.autoApprove ?? true,
     })
     .returning()
+  if (params.teacherId) await assignTeacher({ classId: c.id, tenantId: params.tenantId, teacherId: params.teacherId })
   return c
+}
+
+export async function assignTeacher(params: { classId: string; tenantId: string; teacherId: string }) {
+  const [row] = await db
+    .insert(classTeachers)
+    .values({ ...params, assignedBy: params.teacherId })
+    .returning()
+  return row
 }
 
 export async function enrollStudent(params: {
@@ -219,7 +232,7 @@ export async function createTestQuestion(overrides: {
 export async function createTestSession(overrides: {
   examId: string
   studentId: string
-  tenantId: string | null
+  tenantId: string
   totalMarks?: number
   autoScore?: number | null
   manualScore?: number | null
@@ -292,6 +305,11 @@ export async function createQuestionResult(params: {
   // Defaults to 'ai', i.e. the machine graded it and nobody had to look. Pass
   // 'needs_human' to stand in for a row the Phase 6 backstop parked.
   reviewStatus?: 'ai' | 'needs_human' | 'resolved'
+  // Set to stand in for a row the blank-page detector auto-zeroed. See
+  // evaluation.blank-page-audit.ts.
+  autoZeroReason?: string | null
+  reviewedBy?: string | null
+  reviewedAt?: Date | null
 }) {
   const [r] = await db
     .insert(questionResults)
@@ -303,6 +321,9 @@ export async function createQuestionResult(params: {
       imageUrl: params.imageUrl,
       aiFeedback: params.aiFeedback ?? null,
       reviewStatus: params.reviewStatus ?? 'ai',
+      autoZeroReason: params.autoZeroReason ?? null,
+      reviewedBy: params.reviewedBy ?? null,
+      reviewedAt: params.reviewedAt ?? null,
     })
     .returning()
   return r
@@ -398,15 +419,41 @@ export async function createTestCoachingJoinCode(params: {
  * Returns the {tenant, owner, teacher, student} bundle.
  */
 export async function seedTenantWithUsers(plan: PlanName = 'free') {
-  const owner = await createTestUser({ role: 'coaching_owner' })
+  const owner = await createTestUser()
   const tenant = await createTestTenant({ ownerId: owner.id, plan })
   await createMembership({ userId: owner.id, tenantId: tenant.id, role: 'coaching_owner' })
 
-  const teacher = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+  const teacher = await createTestUser()
   await createMembership({ userId: teacher.id, tenantId: tenant.id, role: 'teacher' })
 
-  const student = await createTestUser({ role: 'student', tenantId: tenant.id })
+  const student = await createTestUser()
   await createMembership({ userId: student.id, tenantId: tenant.id, role: 'student' })
 
   return { tenant, owner, teacher, student }
+}
+
+// ── Platform switches ─────────────────────────────────────────────────────
+
+/**
+ * Turn the platform billing switch on (or off) for the current test.
+ *
+ * `billing_enabled` defaults to FALSE — the MVP posture — and while it is off
+ * `assertWithinLimit` / `assertHasFeature` return immediately without counting
+ * anything. So any test asserting that a quota or feature gate *fires* must call
+ * this first, or it passes vacuously: the expectation becomes
+ * "resolved undefined instead of rejecting", which reads like a broken limit
+ * rather than a suspended one.
+ *
+ * Clears the service's 15s memo as well as writing the row — that cache easily
+ * outlives a whole test file, so a suite that only wrote the row would inherit
+ * whatever the previously-run file left in memory.
+ *
+ * @example
+ * describe('some quota', () => {
+ *   beforeEach(() => setBillingEnabled(true))
+ * })
+ */
+export async function setBillingEnabled(enabled: boolean): Promise<void> {
+  await setPlatformSetting('billing_enabled', enabled, '00000000-0000-0000-0000-000000000000')
+  __clearPlatformCache()
 }

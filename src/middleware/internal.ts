@@ -6,7 +6,7 @@ import { env } from '../config/env.js'
 import { authenticate, requireRole } from './auth.middleware.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The `/internal/*` seam — everything the Gyanverse operator panel talks to.
+// The `/internal/*` seam — everything the Gyaanverse operator panel talks to.
 //
 // Phase 6 inlined this guard inside `evaluation.internal.routes.ts`. It lives
 // here now because Phase 7 adds a second internal route file and then a third,

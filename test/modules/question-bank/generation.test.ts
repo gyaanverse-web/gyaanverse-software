@@ -384,7 +384,7 @@ describe('draft review', () => {
       answerKey: { optionId: 'a' }, marks: 4,
     }).returning()
 
-    const s2 = await createTestUser({ role: 'student', tenantId: tenant.id })
+    const s2 = await createTestUser()
     const sess1 = await createTestSession({ examId: exam.id, studentId: student.id, tenantId: tenant.id })
     const sess2 = await createTestSession({ examId: exam.id, studentId: s2.id, tenantId: tenant.id })
     // one correct, one wrong

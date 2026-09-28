@@ -5,14 +5,21 @@ import { db } from '../shared/db.js'
 import { env } from './env.js'
 import { users, sessions, accounts, verifications } from '../modules/auth/auth.schema.js'
 import { sendEmail } from '../modules/notification/channels/email.channel.js'
-import { withFrontendCallback } from '../shared/urls.js'
+import { authActionEmail } from '../modules/notification/templates/index.js'
+import { appTokenUrl } from '../shared/urls.js'
 
 // In dev, sendEmail() routes to Mailpit (http://localhost:8025 web UI). If
 // Mailpit isn't running the send throws — we log the URL as a fallback so the
 // signup flow can still be completed manually instead of being a dead end.
-async function sendWithFallback(label: string, to: string, subject: string, html: string, url: string): Promise<void> {
+async function sendWithFallback(
+  label: string,
+  to: string,
+  subject: string,
+  body: { html: string; text: string },
+  url: string,
+): Promise<void> {
   try {
-    await sendEmail({ to, subject, html })
+    await sendEmail({ to, subject, html: body.html, text: body.text })
   } catch (err) {
     console.error(`[auth] ${label} email send failed for ${to}:`, err)
     if (env.NODE_ENV !== 'production') {
@@ -22,27 +29,39 @@ async function sendWithFallback(label: string, to: string, subject: string, html
   }
 }
 
-async function sendVerificationEmail(userEmail: string, betterAuthUrl: string): Promise<void> {
-  // The link must hit the API (only it can consume the token), but the page the
-  // user is redirected to afterwards has to be on the frontend — see
-  // withFrontendCallback.
-  const url = withFrontendCallback(betterAuthUrl, '/verify-email')
+// Both links point at a frontend page that consumes the token via the API,
+// rather than at the API endpoint itself — see appTokenUrl for why that
+// distinction is load-bearing and not just cosmetic.
+async function sendVerificationEmail(userEmail: string, token: string): Promise<void> {
+  const url = appTokenUrl('/verify-email', token)
   await sendWithFallback(
     'EMAIL VERIFICATION',
     userEmail,
-    'Verify your Gyanverse email',
-    `<p>Click <a href="${url}">this link</a> to verify your email. It expires in 1 hour.</p><p>Ignore this if you didn't sign up.</p>`,
+    'Verify your Gyaanverse email',
+    authActionEmail({
+      heading: 'Confirm your email address',
+      intro: 'You created a Gyaanverse account with this address. Confirm it to finish signing up.',
+      ctaLabel: 'Verify email address',
+      url,
+      expiry: '1 hour',
+    }),
     url,
   )
 }
 
-async function sendPasswordResetEmail(userEmail: string, betterAuthUrl: string): Promise<void> {
-  const url = withFrontendCallback(betterAuthUrl, '/reset-password')
+async function sendPasswordResetEmail(userEmail: string, token: string): Promise<void> {
+  const url = appTokenUrl('/reset-password', token)
   await sendWithFallback(
     'PASSWORD RESET',
     userEmail,
-    'Reset your Gyanverse password',
-    `<p>Click <a href="${url}">this link</a> to reset your password. It expires in 1 hour.</p><p>Ignore this if you didn't request a reset.</p>`,
+    'Reset your Gyaanverse password',
+    authActionEmail({
+      heading: 'Reset your password',
+      intro: 'We received a request to set a new password for your Gyaanverse account.',
+      ctaLabel: 'Choose a new password',
+      url,
+      expiry: '1 hour',
+    }),
     url,
   )
 }
@@ -104,7 +123,7 @@ export const auth = betterAuth({
     },
     // Share the session cookie across all tenant subdomains.
     //   dev:  Domain=lvh.me        → cookie is sent to *.lvh.me and lvh.me
-    //   prod: Domain=gyanverse.com → cookie is sent to *.gyanverse.com and gyanverse.com
+    //   prod: Domain=gyaanverse.com → cookie is sent to *.gyaanverse.com and gyaanverse.com
     //
     // Why lvh.me in dev (not localhost)? Chromium treats `localhost` as a public
     // suffix (TLD-like). Per RFC 6265 §5.3 step 5, a Set-Cookie with Domain set
@@ -120,7 +139,7 @@ export const auth = betterAuth({
     // Security note (per Better Auth guidance): this gives every subdomain of the
     // configured root read access to the auth cookie. We control the whole zone
     // (tenant subdomains are all our app), so this is acceptable. If we ever host
-    // an untrusted service at *.gyanverse.com (status pages, partner widgets, etc.)
+    // an untrusted service at *.gyaanverse.com (status pages, partner widgets, etc.)
     // it MUST be moved to a separate domain.
     crossSubDomainCookies: {
       enabled: true,
@@ -132,11 +151,16 @@ export const auth = betterAuth({
   user: {
     modelName: 'users',
     additionalFields: {
+      // Exposed on the session as `role` (unchanged wire name — the frontend
+      // and every `/api/auth/get-session` consumer already key off it) while
+      // the underlying column is `users.accountRole`. Platform-level only:
+      // 'super_admin' or the default 'student', never a coaching-scoped value.
       role: {
         type: 'string',
         required: false,
         defaultValue: 'student',
         input: false, // server-controlled only
+        fieldName: 'accountRole',
       },
       // The one role-ish field the client MAY set, because it grants nothing:
       // every permission is authorised off the `memberships` row by
@@ -155,11 +179,6 @@ export const auth = betterAuth({
         transform: {
           input: (value: unknown) => (value === 'coaching_owner' ? 'coaching_owner' : 'student'),
         },
-      },
-      tenantId: {
-        type: 'string',
-        required: false,
-        input: false,
       },
       isProfileComplete: {
         type: 'boolean',
@@ -183,10 +202,14 @@ export const auth = betterAuth({
     // Better Auth.
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async (
-      { user, url }: { user: { email: string }; url: string; token: string },
+      { user, token }: { user: { email: string }; url: string; token: string },
       _request?: Request,
     ) => {
-      await sendPasswordResetEmail(user.email, url)
+      // `url` is ignored on purpose: it points at Better Auth's own
+      // /reset-password/:token redirector, which exists only to bounce the
+      // browser to a callbackURL. We link the frontend directly instead, and
+      // the token is validated when the new password is submitted.
+      await sendPasswordResetEmail(user.email, token)
     },
   },
 
@@ -194,8 +217,8 @@ export const auth = betterAuth({
   // emailAndPassword — that's the only place Better Auth's sign-up route checks.
   emailVerification: {
     sendOnSignUp: true,
-    sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
-      await sendVerificationEmail(user.email, url)
+    sendVerificationEmail: async ({ user, token }: { user: { email: string }; token: string }) => {
+      await sendVerificationEmail(user.email, token)
     },
   },
 
@@ -215,7 +238,7 @@ export const auth = betterAuth({
       expiresIn: 600, // 10 minutes
       // Auto-create an account on first successful OTP verification
       signUpOnVerification: {
-        getTempEmail: (phone) => `${phone.replace(/\D/g, '')}@phone.gyanverse.app`,
+        getTempEmail: (phone) => `${phone.replace(/\D/g, '')}@phone.gyaanverse.app`,
         getTempName: (phone) => phone,
       },
     }),

@@ -11,12 +11,8 @@ interface EmailTemplate {
   html: string
 }
 
-// Shared layout wrapper — keeps all emails visually consistent
-function layout(content: string, link?: string | null): string {
-  const button = link
-    ? `<p style="margin:24px 0"><a href="${link}" style="background:#2B50F5;color:#fff;padding:12px 24px;border-radius:999px;text-decoration:none;font-weight:600">Open in Gyanverse</a></p>`
-    : ''
-
+// Outer chrome shared by every email we send — notification and auth alike.
+function shell(content: string, footer: string): string {
   return `
 <!DOCTYPE html>
 <html>
@@ -26,17 +22,76 @@ function layout(content: string, link?: string | null): string {
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;padding:40px;border:1px solid #e5e7eb;max-width:600px">
         <tr><td>
-          <p style="margin:0 0 24px;font-size:22px;font-weight:700;color:#111">Gyanverse</p>
+          <p style="margin:0 0 24px;font-size:22px;font-weight:700;color:#111">Gyaanverse</p>
           ${content}
-          ${button}
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0">
-          <p style="margin:0;font-size:13px;color:#6b7280">You're receiving this because you're a member of a coaching on Gyanverse. To manage notifications, visit your profile settings.</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">${footer}</p>
         </td></tr>
       </table>
     </td></tr>
   </table>
 </body>
 </html>`
+}
+
+function ctaButton(link: string, label: string): string {
+  return `<p style="margin:24px 0"><a href="${link}" style="background:#2B50F5;color:#fff;padding:12px 24px;border-radius:999px;text-decoration:none;font-weight:600">${label}</a></p>`
+}
+
+// Shared layout wrapper — keeps all emails visually consistent
+function layout(content: string, link?: string | null): string {
+  return shell(
+    `${content}${link ? ctaButton(link, 'Open in Gyaanverse') : ''}`,
+    "You're receiving this because you're a member of a coaching on Gyaanverse. To manage notifications, visit your profile settings.",
+  )
+}
+
+// ── Auth action emails (verification, password reset) ────────────────────────
+
+/**
+ * The one-click emails that carry a token: verify-your-email and reset-password.
+ *
+ * These are held to a higher bar than the notification templates above, because
+ * they are the mails most likely to be classified as phishing — they go to
+ * strangers, from a young domain, and consist of a single link. So they carry a
+ * plaintext alternative, a visible copy of the destination URL (never a bare
+ * "click this link" whose anchor points somewhere the reader can't see), and a
+ * footer naming the site that sent them. Keep all three when editing.
+ */
+export function authActionEmail(opts: {
+  heading: string
+  intro: string
+  ctaLabel: string
+  url: string
+  expiry: string
+}): { html: string; text: string } {
+  const origin = new URL(opts.url).origin
+  const site = origin.replace(/^https?:\/\//, '')
+
+  const html = shell(
+    `
+      <p style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111">${opts.heading}</p>
+      <p style="margin:0 0 4px;font-size:16px;color:#374151">${opts.intro}</p>
+      ${ctaButton(opts.url, opts.ctaLabel)}
+      <p style="margin:0 0 8px;font-size:14px;color:#6b7280">Or paste this address into your browser:</p>
+      <p style="margin:0 0 16px;font-size:13px;color:#374151;word-break:break-all"><a href="${opts.url}" style="color:#2B50F5;text-decoration:none">${opts.url}</a></p>
+      <p style="margin:0;font-size:14px;color:#6b7280">This link expires in ${opts.expiry} and can only be used once.</p>
+    `,
+    `Sent by Gyaanverse (${site}). If you didn't request this, you can safely ignore this email — no changes will be made to your account.`,
+  )
+
+  const text = [
+    opts.heading,
+    '',
+    opts.intro,
+    '',
+    opts.url,
+    '',
+    `This link expires in ${opts.expiry} and can only be used once.`,
+    `Sent by Gyaanverse (${site}). If you didn't request this, you can safely ignore this email — no changes will be made to your account.`,
+  ].join('\n')
+
+  return { html, text }
 }
 
 // ── Per-type templates ────────────────────────────────────────────────────────
@@ -84,7 +139,7 @@ function inviteReceived(data: TemplateData & { coachingName: string }): EmailTem
     html: layout(`
       <p style="margin:0 0 8px;font-size:16px;color:#374151">Hi ${data.recipientName},</p>
       <p style="margin:0 0 16px;font-size:16px;color:#374151">
-        You've been invited to join <strong>${data.coachingName}</strong> on Gyanverse.
+        You've been invited to join <strong>${data.coachingName}</strong> on Gyaanverse.
       </p>
     `, data.link),
   }

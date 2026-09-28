@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@shared/db.js'
-import { tenants, tenantSettings } from '@modules/tenant/tenant.schema.js'
+import { tenants } from '@modules/tenant/tenant.schema.js'
 import { memberships } from '@modules/membership/membership.schema.js'
 import { users } from '@modules/auth/auth.schema.js'
 import { classes, classMembers } from '@modules/class/class.schema.js'
@@ -10,6 +10,7 @@ import {
   deleteCoaching,
   removeMember,
   getMyTenant,
+  listMyMemberships,
 } from '@modules/tenant/tenant.service.js'
 import {
   createTestUser,
@@ -21,19 +22,12 @@ import {
 } from '../../helpers/fixtures.js'
 
 describe('registerCoaching', () => {
-  it('creates tenant + settings + owner membership + updates user role atomically', async () => {
-    const owner = await createTestUser({ role: 'student', emailVerified: true })
+  it('creates tenant + owner membership atomically', async () => {
+    const owner = await createTestUser({ emailVerified: true })
     const result = await registerCoaching(owner.id, { slug: 'newcoaching', name: 'New Coaching' })
 
     expect(result.tenant.slug).toBe('newcoaching')
     expect(result.tenant.ownerId).toBe(owner.id)
-
-    // Settings row created
-    const [settings] = await db
-      .select()
-      .from(tenantSettings)
-      .where(eq(tenantSettings.tenantId, result.tenant.id))
-    expect(settings).toBeDefined()
 
     // Membership row created with coaching_owner role
     const [m] = await db
@@ -43,10 +37,10 @@ describe('registerCoaching', () => {
     expect(m.role).toBe('coaching_owner')
     expect(m.tenantId).toBe(result.tenant.id)
 
-    // User row updated
+    // The account row is never touched — memberships is the only source of
+    // truth for "which coachings, which role" (multi-tenancy audit Core).
     const [u] = await db.select().from(users).where(eq(users.id, owner.id))
-    expect(u.role).toBe('coaching_owner')
-    expect(u.tenantId).toBe(result.tenant.id)
+    expect(u.accountRole).toBe('student')
   })
 
   it('rejects unverified users', async () => {
@@ -58,12 +52,11 @@ describe('registerCoaching', () => {
 
   it('rejects reserved slugs', async () => {
     const owner = await createTestUser({ emailVerified: true })
-    await expect(
-      registerCoaching(owner.id, { slug: 'admin', name: 'Admin' }),
-    ).rejects.toMatchObject({ code: 'RESERVED_SLUG' })
-    await expect(
-      registerCoaching(owner.id, { slug: 'www', name: 'WWW' }),
-    ).rejects.toMatchObject({ code: 'RESERVED_SLUG' })
+    for (const slug of ['admin', 'www', 'auth', 'cdn', 'staging', 'secure', 'billing', 'gyaanverse']) {
+      await expect(
+        registerCoaching(owner.id, { slug, name: `Reserved ${slug}` }),
+      ).rejects.toMatchObject({ code: 'RESERVED_SLUG' })
+    }
   })
 
   it('rejects duplicate slugs', async () => {
@@ -76,13 +69,25 @@ describe('registerCoaching', () => {
     ).rejects.toMatchObject({ code: 'CONFLICT' })
   })
 
-  it('rejects an owner who already owns a coaching', async () => {
+  // D-1 (multi-tenancy audit F-9): one person may own more than one coaching.
+  // `memberships` still enforces exactly one owner *per tenant* — this pins
+  // that owning a second coaching is no longer blocked at the account level.
+  it('lets one person own more than one coaching', async () => {
     const owner = await createTestUser({ emailVerified: true })
-    await registerCoaching(owner.id, { slug: 'first', name: 'First' })
+    const first = await registerCoaching(owner.id, { slug: 'first', name: 'First' })
+    const second = await registerCoaching(owner.id, { slug: 'second', name: 'Second' })
 
-    await expect(
-      registerCoaching(owner.id, { slug: 'second', name: 'Second' }),
-    ).rejects.toMatchObject({ code: 'CONFLICT' })
+    expect(first.tenant.id).not.toBe(second.tenant.id)
+
+    const rows = await db
+      .select({ tenantId: memberships.tenantId, role: memberships.role })
+      .from(memberships)
+      .where(eq(memberships.userId, owner.id))
+    expect(rows).toHaveLength(2)
+    expect(rows.every((r) => r.role === 'coaching_owner')).toBe(true)
+    expect(rows.map((r) => r.tenantId).sort()).toEqual(
+      [first.tenant.id, second.tenant.id].sort(),
+    )
   })
 
   it('rejects invalid slug formats', async () => {
@@ -90,6 +95,17 @@ describe('registerCoaching', () => {
     await expect(
       registerCoaching(owner.id, { slug: 'Has Spaces', name: 'Bad' }),
     ).rejects.toMatchObject({ code: 'INVALID_SLUG' })
+  })
+
+  // These all used to be accepted and would have produced a tenant on an
+  // unreachable hostname (or, for xn--, a homograph-spoofable one).
+  it('rejects slugs that are not valid DNS labels', async () => {
+    const owner = await createTestUser({ emailVerified: true })
+    for (const slug of ['-leading', 'trailing-', '-', 'ab', 'xn--80ak6aa92e']) {
+      await expect(
+        registerCoaching(owner.id, { slug, name: `Bad ${slug}` }),
+      ).rejects.toMatchObject({ code: 'INVALID_SLUG' })
+    }
   })
 })
 
@@ -101,7 +117,7 @@ describe('deleteCoaching', () => {
     })
   })
 
-  it('cascades classes, class members, memberships, settings, and resets users', async () => {
+  it('cascades classes, class members, and memberships', async () => {
     const { tenant, owner, teacher, student } = await seedTenantWithUsers()
 
     // Add some real content to verify cascades
@@ -113,13 +129,6 @@ describe('deleteCoaching', () => {
     // Tenant gone
     const tenantRows = await db.select().from(tenants).where(eq(tenants.id, tenant.id))
     expect(tenantRows).toHaveLength(0)
-
-    // Settings gone
-    const settingsRows = await db
-      .select()
-      .from(tenantSettings)
-      .where(eq(tenantSettings.tenantId, tenant.id))
-    expect(settingsRows).toHaveLength(0)
 
     // Memberships gone
     const membershipRows = await db
@@ -138,15 +147,20 @@ describe('deleteCoaching', () => {
       .from(classMembers)
       .where(eq(classMembers.classId, cls.id))
     expect(classMemberRows).toHaveLength(0)
+  })
 
-    // Member users reset to student + tenantId = null
-    const [resetStudent] = await db.select().from(users).where(eq(users.id, student.id))
-    expect(resetStudent.tenantId).toBeNull()
-    expect(resetStudent.role).toBe('student')
+  // Regression for the "two answer keys" bug the Core retirement fixed: before
+  // it, deleteCoaching reset users.role/tenantId to 'student'/null for every
+  // member — including someone whose real home was a DIFFERENT coaching. With
+  // memberships as the only source of truth, deleting B must not touch A.
+  it("doesn't disturb a member's role in a different coaching", async () => {
+    const a = await seedTenantWithUsers()
+    const b = await seedTenantWithUsers()
+    await createMembership({ userId: a.owner.id, tenantId: b.tenant.id, role: 'student' })
 
-    const [resetOwner] = await db.select().from(users).where(eq(users.id, owner.id))
-    expect(resetOwner.tenantId).toBeNull()
-    expect(resetOwner.role).toBe('student')
+    await deleteCoaching(b.tenant.id, b.owner.id)
+
+    expect((await getMyTenant(a.owner.id, a.tenant.slug))?.membershipRole).toBe('coaching_owner')
   })
 
   it("doesn't touch other tenants' data", async () => {
@@ -193,18 +207,22 @@ describe('removeMember', () => {
     })
   })
 
-  it("only clears users.tenantId if it still pointed to this tenant", async () => {
-    // User belongs to tenant A; they later joined tenant B and users.tenantId
-    // now points to B. Removing them from A must NOT clear their B linkage.
+  it("doesn't disturb the member's membership in a different coaching", async () => {
+    // User belongs to tenant A and also joined tenant B. Removing them from A
+    // must not touch their B membership — there is no shared "primary tenant"
+    // pointer left on `users` for one removal to clobber.
     const a = await seedTenantWithUsers()
     const b = await createTestTenant()
     await createMembership({ userId: a.student.id, tenantId: b.id, role: 'student' })
-    await db.update(users).set({ tenantId: b.id }).where(eq(users.id, a.student.id))
 
     await removeMember(a.tenant.id, a.student.id, a.owner.id)
 
-    const [u] = await db.select().from(users).where(eq(users.id, a.student.id))
-    expect(u.tenantId).toBe(b.id) // unchanged
+    const [stillInB] = await db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.userId, a.student.id), eq(memberships.tenantId, b.id)))
+    expect(stillInB).toBeDefined()
+    expect(stillInB.role).toBe('student')
   })
 })
 
@@ -227,5 +245,90 @@ describe('getMyTenant', () => {
     expect((await getMyTenant(owner.id))?.membershipRole).toBe('coaching_owner')
     expect((await getMyTenant(teacher.id))?.membershipRole).toBe('teacher')
     expect((await getMyTenant(student.id))?.membershipRole).toBe('student')
+  })
+
+  // Audit F-6: the slug the browser is on used to be ignored, and a user in two
+  // coachings got whichever membership row Postgres yielded first.
+  describe('scoped to the coaching the request is on', () => {
+    // Owner of A, student of B — the audit's canonical two-coaching user.
+    async function twoCoachingUser() {
+      const a = await seedTenantWithUsers()
+      const b = await seedTenantWithUsers()
+      await createMembership({ userId: a.owner.id, tenantId: b.tenant.id, role: 'student' })
+      // Pin the order explicitly: A first, B later.
+      await db.update(memberships).set({ createdAt: new Date('2026-01-01') })
+        .where(and(eq(memberships.userId, a.owner.id), eq(memberships.tenantId, a.tenant.id)))
+      await db.update(memberships).set({ createdAt: new Date('2026-02-01') })
+        .where(and(eq(memberships.userId, a.owner.id), eq(memberships.tenantId, b.tenant.id)))
+      return { user: a.owner, tenantA: a.tenant, tenantB: b.tenant }
+    }
+
+    it('CRITICAL: returns the membership in the coaching on the host, not another one', async () => {
+      const { user, tenantA, tenantB } = await twoCoachingUser()
+
+      const onA = await getMyTenant(user.id, tenantA.slug)
+      expect(onA?.tenant.id).toBe(tenantA.id)
+      expect(onA?.membershipRole).toBe('coaching_owner')
+
+      const onB = await getMyTenant(user.id, tenantB.slug)
+      expect(onB?.tenant.id).toBe(tenantB.id)
+      expect(onB?.membershipRole).toBe('student')
+    })
+
+    it('CRITICAL: 403 on a coaching the user does not belong to, never a fallback to their own', async () => {
+      const { tenant: mine, owner } = await seedTenantWithUsers()
+      const { tenant: other } = await seedTenantWithUsers()
+      expect(mine.id).not.toBe(other.id)
+
+      await expect(getMyTenant(owner.id, other.slug)).rejects.toMatchObject({
+        code: 'NOT_A_MEMBER', statusCode: 403,
+      })
+    })
+
+    it('403 on a slug that names no coaching, for a user who has one', async () => {
+      const { owner } = await seedTenantWithUsers()
+      await expect(getMyTenant(owner.id, 'no-such-coaching')).rejects.toMatchObject({ statusCode: 403 })
+    })
+
+    it('null (404) on any coaching for a user who belongs to none — "no coaching yet", not "wrong coaching"', async () => {
+      const { tenant } = await seedTenantWithUsers()
+      const user = await createTestUser()
+      expect(await getMyTenant(user.id, tenant.slug)).toBeNull()
+    })
+
+    it('with no tenant (app host), returns the oldest membership, every time', async () => {
+      const { user, tenantA } = await twoCoachingUser()
+      for (let i = 0; i < 3; i++) {
+        expect((await getMyTenant(user.id))?.tenant.id).toBe(tenantA.id)
+      }
+    })
+
+    it('a reserved slug (the frontend sends `dev` on the app host) counts as no tenant', async () => {
+      const { user, tenantA } = await twoCoachingUser()
+      expect((await getMyTenant(user.id, 'dev'))?.tenant.id).toBe(tenantA.id)
+    })
+  })
+})
+
+describe('listMyMemberships', () => {
+  it('returns nothing for a user with no memberships', async () => {
+    const user = await createTestUser()
+    expect(await listMyMemberships(user.id)).toEqual([])
+  })
+
+  it('returns every coaching the user belongs to, oldest first', async () => {
+    const a = await seedTenantWithUsers()
+    const b = await seedTenantWithUsers()
+    await createMembership({ userId: a.owner.id, tenantId: b.tenant.id, role: 'student' })
+    await db.update(memberships).set({ createdAt: new Date('2026-01-01') })
+      .where(and(eq(memberships.userId, a.owner.id), eq(memberships.tenantId, a.tenant.id)))
+    await db.update(memberships).set({ createdAt: new Date('2026-02-01') })
+      .where(and(eq(memberships.userId, a.owner.id), eq(memberships.tenantId, b.tenant.id)))
+
+    const result = await listMyMemberships(a.owner.id)
+    expect(result.map((r) => ({ tenantId: r.tenant.id, role: r.membershipRole }))).toEqual([
+      { tenantId: a.tenant.id, role: 'coaching_owner' },
+      { tenantId: b.tenant.id, role: 'student' },
+    ])
   })
 })

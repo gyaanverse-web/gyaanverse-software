@@ -125,7 +125,7 @@ export const questionResults = pgTable('question_results', {
   questionId: uuid('question_id').notNull().references(() => questions.id),
   // ALWAYS the real, effective mark — what the student is actually scored.
   //
-  // When a Gyanverse operator corrects an answer, their number is written here
+  // When a Gyaanverse operator corrects an answer, their number is written here
   // and the AI's original is moved to `ai_score`. That way everything downstream
   // (reports, totals, analytics) keeps reading this one column and never has to
   // know that manual corrections exist at all.
@@ -138,11 +138,11 @@ export const questionResults = pgTable('question_results', {
   //
   //   ai           the AI graded it and nobody has needed to get involved
   //   needs_human  the backstop wrote a placeholder 0 here so the class could
-  //                move on; a Gyanverse operator still has to grade it by hand
+  //                move on; a Gyaanverse operator still has to grade it by hand
   //   resolved     an operator has. `score` is their number, `ai_score` is the
   //                AI's original
   //
-  // NEVER SHOWN TO THE COACHING. `needs_human` is a Gyanverse internal state,
+  // NEVER SHOWN TO THE COACHING. `needs_human` is a Gyaanverse internal state,
   // not a task for the teacher. See
   // docs/decisions/2026-08-12-evaluation-backstop.md
   reviewStatus: varchar('review_status', { length: 20 }).notNull().default('ai'),
@@ -154,6 +154,16 @@ export const questionResults = pgTable('question_results', {
   reviewedBy: uuid('reviewed_by').references(() => users.id),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   reviewNote: text('review_note'),
+
+  // Set only when the pixel-only blank-page detector auto-scored this answer 0
+  // (see evaluation.blank-page.ts). NULL for every normal AI-graded or
+  // human-reviewed row. This is an AUDIT marker, not a review gate — unlike
+  // `needs_human`, a row with this set has already completed and its exam is
+  // free to publish; `reviewedBy` on this row means a Gyaanverse operator has
+  // since spot-checked it (`reviewStatus` staying `ai` = confirmed blank,
+  // becoming `resolved` = the detector was wrong and a human corrected the
+  // score). See evaluation.blank-page-audit.ts.
+  autoZeroReason: varchar('auto_zero_reason', { length: 30 }),
 }, (t) => [
   // Enforces one row per question per job. The database itself refuses a second
   // row, which is what lets a re-run safely say "already done, skip it" instead
@@ -162,4 +172,7 @@ export const questionResults = pgTable('question_results', {
   // Makes both the internal review queue and the publish gate fast. They ask the
   // same question: "is anything here still waiting on a person?"
   index('question_results_review_status_idx').on(t.reviewStatus),
+  // Makes the blank-page audit list/summary fast — "which rows did the
+  // detector auto-zero?"
+  index('question_results_auto_zero_reason_idx').on(t.autoZeroReason),
 ])

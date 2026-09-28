@@ -169,16 +169,60 @@ async function getChapter(tenantId: string, moduleId: string, name: string): Pro
 const here = dirname(fileURLToPath(import.meta.url))
 const dataRoot = join(here, 'seed-data')
 
+/**
+ * A grade folder is named for its grade — `seed-data/9/`, `seed-data/11/`.
+ *
+ * Matched positively rather than blocklisting the folders that are not grades,
+ * because `seed-data/` is shared. `seed-data/packs/` holds Seed Studio content
+ * packs, which are a different format entirely (a five-level
+ * subject → module → chapter → section → concept tree) read by
+ * `scripts/seed-studio.ts`. This script used to walk into it, parse a pack as a
+ * flat DataFile, and die on `data.questions is not iterable` — after having
+ * already imported the real files, so the run looked like a mid-import
+ * corruption rather than a script reading someone else's data.
+ *
+ * Anything else that lands in here later — `_templates/`, `archive/`, a stray
+ * `node_modules` — is excluded by the same rule without another edit.
+ */
+const isGradeFolder = (name: string) => /^\d{1,2}$/.test(name)
+
 function collectFiles(): string[] {
   const out: string[] = []
   for (const gradeDir of readdirSync(dataRoot, { withFileTypes: true })) {
-    if (!gradeDir.isDirectory()) continue
+    if (!gradeDir.isDirectory() || !isGradeFolder(gradeDir.name)) continue
     const dir = join(dataRoot, gradeDir.name)
     for (const f of readdirSync(dir, { withFileTypes: true })) {
       if (f.isFile() && f.name.endsWith('.json')) out.push(join(dir, f.name))
     }
   }
   return out
+}
+
+/**
+ * Second net, for a file that IS in a grade folder but is not a data file.
+ *
+ * The folder rule above stops this script reading another tool's data; this
+ * stops a typo in a hand-authored file presenting as a `TypeError` from deep in
+ * the import loop. Named as a fatal error rather than a skip on purpose: a
+ * malformed subject file means questions you believe you imported are silently
+ * absent, which is discovered much later and much more expensively than a
+ * failed seed.
+ */
+function assertDataFile(data: unknown, file: string): asserts data is DataFile {
+  const d = data as Partial<DataFile>
+  const problem =
+    typeof d?.grade !== 'string' ? `"grade" must be a string, got ${JSON.stringify(d?.grade)}`
+    : typeof d?.subject !== 'string' ? `"subject" must be a string, got ${JSON.stringify(d?.subject)}`
+    : !Array.isArray(d?.questions) ? `"questions" must be an array, got ${JSON.stringify(d?.questions)}`
+    : null
+
+  if (problem) {
+    console.error(`\n  ERROR: ${file} is not a question data file.`)
+    console.error(`  ${problem}`)
+    console.error('\n  Expected shape: { "grade": "9", "subject": "Physics", "questions": [ ... ] }')
+    console.error('  (Seed Studio content packs are a different format and belong in seed-data/packs/.)\n')
+    process.exit(1)
+  }
 }
 
 // CLI: `-- [--tenant <slug>] [<grade> [<subject>]]`
@@ -230,7 +274,8 @@ console.log(`\nImporting into tenant '${tenantSlug}'`)
 console.log(`Found ${files.length} data file(s)${gradeFilter ? ` (filter: grade ${gradeFilter}${subjectFilter ? ` / ${subjectFilter}` : ''})` : ''}\n`)
 
 for (const file of files) {
-  const data = JSON.parse(readFileSync(file, 'utf8')) as DataFile
+  const data: unknown = JSON.parse(readFileSync(file, 'utf8'))
+  assertDataFile(data, file)
   if (gradeFilter && data.grade !== gradeFilter) continue
   if (subjectFilter && data.subject.toLowerCase() !== subjectFilter.toLowerCase()) continue
 

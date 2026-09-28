@@ -2,10 +2,10 @@ import PptxGenJS from 'pptxgenjs'
 
 const pptx = new PptxGenJS()
 pptx.layout = 'LAYOUT_WIDE'
-pptx.author = 'Gyanverse Engineering'
-pptx.company = 'Gyanverse'
+pptx.author = 'Gyaanverse Engineering'
+pptx.company = 'Gyaanverse'
 pptx.subject = 'Backend Module Explainer'
-pptx.title = 'Gyanverse Backend Modules - Purpose and Simple Use'
+pptx.title = 'Gyaanverse Backend Modules - Purpose and Simple Use'
 pptx.lang = 'en-US'
 
 const C = {
@@ -128,7 +128,7 @@ function addHeader(slide, title, subtitle = '') {
   }
 }
 
-function addFooter(slide, text = 'Gyanverse Module Overview') {
+function addFooter(slide, text = 'Gyaanverse Module Overview') {
   slide.addShape(pptx.ShapeType.line, {
     x: 0.6,
     y: 7.15,
@@ -191,7 +191,7 @@ function addModuleCard(slide, module, x, y) {
 // Slide 1
 {
   const slide = pptx.addSlide()
-  addHeader(slide, 'Gyanverse Backend Modules', 'What each module is for and simple client-facing use')
+  addHeader(slide, 'Gyaanverse Backend Modules', 'What each module is for and simple client-facing use')
 
   slide.addShape(pptx.ShapeType.roundRect, {
     x: 0.95,
@@ -365,7 +365,7 @@ addModuleSlide('Operations, Revenue, and Platform Modules', modules.slice(10, 15
     paraSpaceAfterPt: 12,
   })
 
-  addFooter(slide, 'Gyanverse Backend Module Architecture')
+  addFooter(slide, 'Gyaanverse Backend Module Architecture')
 }
 
 await pptx.writeFile({ fileName: '../docs/decks/backend-modules-explainer-client-deck.pptx' })

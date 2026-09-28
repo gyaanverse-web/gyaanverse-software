@@ -9,7 +9,7 @@ import { users } from '../auth/auth.schema.js'
 import { tenants } from '../tenant/tenant.schema.js'
 import { assertWithinLimit } from '../billing/billing.service.js'
 import { dispatch } from '@modules/notification/index.js'
-import { appUrl } from '../../shared/urls.js'
+import { tenantUrl } from '../../shared/urls.js'
 
 const resend = new Resend(env.RESEND_API_KEY)
 
@@ -19,8 +19,8 @@ function generateToken(): string {
   return crypto.randomUUID().replace(/-/g, '')
 }
 
-function inviteAcceptUrl(token: string): string {
-  return appUrl(`/accept-invite?token=${token}`)
+function inviteAcceptPath(token: string): string {
+  return `/accept-invite?token=${token}`
 }
 
 // Minimal HTML escaping — tenant names are owner-supplied free text and land
@@ -44,13 +44,13 @@ function inviteEmailHtml(tenantName: string, url: string): string {
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:14px;padding:40px;border:1px solid #E5E8F0;max-width:600px">
         <tr><td>
-          <p style="margin:0 0 28px;font-size:20px;font-weight:700;color:#0B1020;letter-spacing:-0.01em">Gyanverse</p>
+          <p style="margin:0 0 28px;font-size:20px;font-weight:700;color:#0B1020;letter-spacing:-0.01em">Gyaanverse</p>
           <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#2B50F5;letter-spacing:0.08em;text-transform:uppercase">Teacher invitation</p>
           <p style="margin:0 0 16px;font-size:24px;font-weight:700;color:#0B1020;line-height:1.3">
             You've been invited to join ${name}
           </p>
           <p style="margin:0 0 8px;font-size:16px;color:#3A4257;line-height:1.6">
-            ${name} has invited you to join their coaching on Gyanverse as a <strong>teacher</strong>.
+            ${name} has invited you to join their coaching on Gyaanverse as a <strong>teacher</strong>.
             Accept below to set up your account and get access.
           </p>
           <p style="margin:28px 0">
@@ -84,9 +84,9 @@ async function sendInviteEmail(to: string, tenantName: string, url: string): Pro
     return
   }
   const { error } = await resend.emails.send({
-    from: `Gyanverse <noreply@${env.APP_DOMAIN}>`,
+    from: `Gyaanverse <noreply@${env.APP_DOMAIN}>`,
     to,
-    subject: `You've been invited to join ${tenantName} on Gyanverse`,
+    subject: `You've been invited to join ${tenantName} on Gyaanverse`,
     html: inviteEmailHtml(tenantName, url),
   })
   if (error) console.error('[Resend] Failed to send invite email:', error)
@@ -136,7 +136,7 @@ export async function createInvite(
   await assertWithinLimit(tenantId, 'teachers')
 
   const [tenant] = await db
-    .select({ name: tenants.name })
+    .select({ name: tenants.name, slug: tenants.slug })
     .from(tenants)
     .where(eq(tenants.id, tenantId))
     .limit(1)
@@ -150,7 +150,10 @@ export async function createInvite(
     .values({ tenantId, invitedBy, contact, contactType, role: 'teacher', token, expiresAt })
     .returning()
 
-  const url = inviteAcceptUrl(token)
+  const path = inviteAcceptPath(token)
+  // Emailed/texted link points at the tenant's own subdomain — the same host
+  // the "copy link" button in the dashboard builds from window.location.
+  const url = tenantUrl(tenant.slug, path)
   if (contactType === 'email') {
     await sendInviteEmail(contact, tenant.name, url)
   } else {
@@ -171,8 +174,8 @@ export async function createInvite(
         tenantId,
         data: {
           title: `You've been invited to join ${tenant.name}`,
-          body: `You have a pending invitation to join ${tenant.name} as a teacher on Gyanverse.`,
-          link: url,
+          body: `You have a pending invitation to join ${tenant.name} as a teacher on Gyaanverse.`,
+          link: path,
           metadata: { coachingName: tenant.name },
         },
       })
@@ -260,7 +263,6 @@ export async function acceptInvite(userId: string, token: string) {
 
   await db.transaction(async (tx) => {
     await tx.insert(memberships).values({ userId, tenantId: invite.tenantId, role: 'teacher' })
-    await tx.update(users).set({ role: 'teacher', tenantId: invite.tenantId }).where(eq(users.id, userId))
     await tx.update(invites).set({ status: 'accepted' }).where(eq(invites.id, invite.id))
   })
 

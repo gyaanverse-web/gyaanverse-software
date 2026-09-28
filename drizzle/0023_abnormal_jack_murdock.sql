@@ -1,0 +1,2 @@
+ALTER TABLE "question_results" ADD COLUMN "auto_zero_reason" varchar(30);--> statement-breakpoint
+CREATE INDEX "question_results_auto_zero_reason_idx" ON "question_results" USING btree ("auto_zero_reason");

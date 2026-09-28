@@ -127,7 +127,8 @@ if (!tenant) {
 const [teacher] = await db
   .select({ id: users.id })
   .from(users)
-  .where(and(eq(users.tenantId, tenant.id), eq(users.role, 'teacher')))
+  .innerJoin(memberships, eq(memberships.userId, users.id))
+  .where(and(eq(memberships.tenantId, tenant.id), eq(memberships.role, 'teacher')))
   .limit(1)
 
 if (!teacher) {
@@ -421,7 +422,7 @@ if (STUCK) {
   console.log('  Expect, within a tick or two of a running worker:')
   console.log('    · sessions settled `evaluated`, exam reaches ready_to_publish')
   console.log('    · eval:inspect BACKSTOP open = one per answer')
-  console.log('    · publishing the exam refused — "still being reviewed by Gyanverse"')
+  console.log('    · publishing the exam refused — "still being reviewed by Gyaanverse"')
 } else {
   console.log(`  enqueued     ${enqueued} of ${sessionRows.length}`)
   console.log(`  engine calls ~${enqueued * questionIds.length} OCR + ${enqueued * questionIds.length} evaluate`)

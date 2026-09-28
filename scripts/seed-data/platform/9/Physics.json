@@ -1,0 +1,167 @@
+{
+  "grade": "9",
+  "subject": "Physics",
+  "language": "en",
+  "activate": true,
+  "questions": [
+    {
+      "ref": "plat-9-phy-motion-1",
+      "chapter": "Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "The SI unit of speed is:",
+      "payload": {
+        "options": [
+          { "id": "a", "text": "$\\mathrm{m/s^2}$" },
+          { "id": "b", "text": "$\\mathrm{m/s}$" },
+          { "id": "c", "text": "$\\mathrm{km/h}$" },
+          { "id": "d", "text": "$\\mathrm{m}$" }
+        ]
+      },
+      "answerKey": { "optionId": "b" },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "Speed is distance travelled per unit time. In SI units, distance is measured in metres and time in seconds, so the SI unit of speed is $\\mathrm{m/s}$.",
+      "tags": ["motion", "si-units"],
+      "source": { "type": "textbook", "book": "NCERT Class 9" },
+      "metadata": { "cognitiveLevel": "remember" }
+    },
+    {
+      "ref": "plat-9-phy-motion-2",
+      "chapter": "Motion",
+      "type": "integer",
+      "difficulty": "medium",
+      "body": "A car starts from rest and accelerates uniformly at $2\\,\\mathrm{m/s^2}$. Find its velocity after $5\\,\\mathrm{s}$, in $\\mathrm{m/s}$.",
+      "payload": {},
+      "answerKey": { "value": 10 },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "Using $v = u + at$: $v = 0 + 2 \\times 5 = 10\\,\\mathrm{m/s}$.",
+      "tags": ["motion", "equations-of-motion"],
+      "source": { "type": "original" },
+      "metadata": { "cognitiveLevel": "apply" }
+    },
+    {
+      "ref": "plat-9-phy-motion-3",
+      "chapter": "Motion",
+      "type": "numerical",
+      "difficulty": "hard",
+      "body": "A ball is thrown vertically upward with an initial speed of $10\\,\\mathrm{m/s}$. Taking $g = 9.8\\,\\mathrm{m/s^2}$, find the maximum height reached, in metres, correct to 2 decimal places.",
+      "payload": { "decimalPlaces": 2 },
+      "answerKey": { "value": 5.10, "tolerance": 0.05 },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "At maximum height, final velocity $v = 0$. Using $v^2 = u^2 - 2gh$: $h = \\dfrac{u^2}{2g} = \\dfrac{10^2}{2 \\times 9.8} = \\dfrac{100}{19.6} \\approx 5.10\\,\\mathrm{m}$.",
+      "tags": ["motion", "equations-of-motion"],
+      "source": { "type": "original" },
+      "metadata": { "cognitiveLevel": "apply" }
+    },
+    {
+      "ref": "plat-9-phy-flm-1",
+      "chapter": "Force and Laws of Motion",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "Newton's first law of motion is used to define which physical quantity?",
+      "payload": {
+        "options": [
+          { "id": "a", "text": "Inertia" },
+          { "id": "b", "text": "Momentum" },
+          { "id": "c", "text": "Force" },
+          { "id": "d", "text": "Acceleration" }
+        ]
+      },
+      "answerKey": { "optionId": "a" },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "Newton's first law states that a body continues in its state of rest or uniform motion unless acted upon by an external force — this tendency to resist a change in motion is called inertia.",
+      "tags": ["newtons-laws"],
+      "source": { "type": "textbook", "book": "NCERT Class 9" },
+      "metadata": { "cognitiveLevel": "understand" }
+    },
+    {
+      "ref": "plat-9-phy-flm-2",
+      "chapter": "Force and Laws of Motion",
+      "type": "integer",
+      "difficulty": "medium",
+      "body": "A net force of $15\\,\\mathrm{N}$ acts on a body of mass $3\\,\\mathrm{kg}$. Calculate its acceleration, in $\\mathrm{m/s^2}$.",
+      "payload": {},
+      "answerKey": { "value": 5 },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "By Newton's second law, $F = ma \\Rightarrow a = \\dfrac{F}{m} = \\dfrac{15}{3} = 5\\,\\mathrm{m/s^2}$.",
+      "tags": ["newtons-laws", "second-law"],
+      "source": { "type": "original" },
+      "metadata": { "cognitiveLevel": "apply" }
+    },
+    {
+      "ref": "plat-9-phy-flm-3",
+      "chapter": "Force and Laws of Motion",
+      "type": "assertion_reason",
+      "difficulty": "hard",
+      "body": "Read the Assertion and Reason and choose the correct option.",
+      "payload": {
+        "assertion": "A rocket accelerates forward by burning fuel and ejecting exhaust gases backward at high speed.",
+        "reason": "This is explained by Newton's third law of motion: the reaction force of the ejected gases on the rocket propels it forward."
+      },
+      "answerKey": { "option": "A" },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "Both statements are true, and the reason correctly explains the assertion — the rocket experiences a forward reaction force equal and opposite to the backward force it exerts on the ejected gases.",
+      "tags": ["newtons-laws", "third-law"],
+      "source": { "type": "original" },
+      "metadata": { "cognitiveLevel": "analyse" }
+    },
+    {
+      "ref": "plat-9-phy-grav-1",
+      "chapter": "Gravitation",
+      "type": "mcq_single",
+      "difficulty": "easy",
+      "body": "According to Newton's law of gravitation, the gravitational force $F$ between two masses $m_1$ and $m_2$ separated by a distance $r$ is given by:",
+      "payload": {
+        "options": [
+          { "id": "a", "text": "$F = G\\dfrac{m_1 m_2}{r}$" },
+          { "id": "b", "text": "$F = G\\dfrac{m_1 m_2}{r^2}$" },
+          { "id": "c", "text": "$F = G\\dfrac{m_1 + m_2}{r^2}$" },
+          { "id": "d", "text": "$F = \\dfrac{G}{m_1 m_2 r^2}$" }
+        ]
+      },
+      "answerKey": { "optionId": "b" },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "Newton's universal law of gravitation: $F = G\\dfrac{m_1 m_2}{r^2}$, where $G$ is the universal gravitational constant.",
+      "tags": ["gravitation"],
+      "source": { "type": "textbook", "book": "NCERT Class 9" },
+      "metadata": { "cognitiveLevel": "remember" }
+    },
+    {
+      "ref": "plat-9-phy-grav-2",
+      "chapter": "Gravitation",
+      "type": "numerical",
+      "difficulty": "hard",
+      "body": "Two objects of masses $4\\,\\mathrm{kg}$ and $6\\,\\mathrm{kg}$ are placed $2\\,\\mathrm{m}$ apart. Using $G = 6.674 \\times 10^{-11}\\,\\mathrm{N\\,m^2/kg^2}$, find the gravitational force between them, in units of $10^{-10}\\,\\mathrm{N}$, correct to 2 decimal places.",
+      "payload": { "decimalPlaces": 2 },
+      "answerKey": { "value": 4.00, "tolerance": 0.05 },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "$F = G\\dfrac{m_1 m_2}{r^2} = 6.674 \\times 10^{-11} \\times \\dfrac{4 \\times 6}{2^2} = 6.674 \\times 10^{-11} \\times 6 = 4.00 \\times 10^{-10}\\,\\mathrm{N}$.",
+      "tags": ["gravitation"],
+      "source": { "type": "original" },
+      "metadata": { "cognitiveLevel": "apply" }
+    },
+    {
+      "ref": "plat-9-phy-grav-3",
+      "chapter": "Gravitation",
+      "type": "fill_blanks",
+      "difficulty": "easy",
+      "body": "The weight of a body is the force of ___ acting on it, and is given by $W = m \\times$ ___.",
+      "payload": { "blanks": 2 },
+      "answerKey": { "answers": ["gravity", "g"] },
+      "marks": 4,
+      "negativeMarks": 1,
+      "explanation": "Weight is the gravitational force acting on a body, $W = mg$, where $g$ is the acceleration due to gravity.",
+      "tags": ["gravitation", "weight"],
+      "source": { "type": "textbook", "book": "NCERT Class 9" },
+      "metadata": { "cognitiveLevel": "remember" }
+    }
+  ]
+}

@@ -69,7 +69,7 @@ describe('the owner never sees drafts in a list', () => {
 
   it('CRITICAL: a teacher does not see a colleague\'s draft either', async () => {
     const { tenant, draft } = await coachingWithDraftAndSubmitted()
-    const colleague = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const colleague = await createTestUser()
     await createMembership({ userId: colleague.id, tenantId: tenant.id, role: 'teacher' })
 
     const seen = await listExamsForTenant(tenant.id, ...asTeacher(colleague.id))
@@ -126,7 +126,7 @@ describe('the owner cannot reach a draft by id', () => {
 
   it('CRITICAL: a teacher gets 404 on a colleague\'s exam in any state', async () => {
     const { tenant, draft, submitted } = await coachingWithDraftAndSubmitted()
-    const colleague = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const colleague = await createTestUser()
     await createMembership({ userId: colleague.id, tenantId: tenant.id, role: 'teacher' })
 
     await expect(loadVisibleExam(draft.id, tenant.id, ...asTeacher(colleague.id)))
@@ -159,7 +159,7 @@ describe('the KPI tiles agree with the list', () => {
 describe('listMyDrafts — the resume list', () => {
   it('returns only the caller\'s own drafts, newest activity first', async () => {
     const { tenant, teacher } = await seedTenantWithUsers('pro')
-    const colleague = await createTestUser({ role: 'teacher', tenantId: tenant.id })
+    const colleague = await createTestUser()
     await createMembership({ userId: colleague.id, tenantId: tenant.id, role: 'teacher' })
 
     const older = await createTestExam({

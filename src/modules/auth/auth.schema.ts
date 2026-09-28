@@ -1,8 +1,9 @@
 import { pgTable, uuid, varchar, text, timestamp, boolean } from 'drizzle-orm/pg-core'
-import { tenants } from '../tenant/tenant.schema.js'
 
 // ── Users ──────────────────────────────────────────────────────────────────
-// Column names align with Better Auth conventions so no field mapping is needed.
+// Column names align with Better Auth conventions, except `accountRole`, which
+// Better Auth still exposes as `role` on the session via `fieldName` in
+// config/auth.ts — see the comment there for why the wire name didn't move.
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -13,18 +14,17 @@ export const users = pgTable('users', {
   phoneNumber: varchar('phone_number', { length: 20 }).unique(),
   phoneNumberVerified: boolean('phone_number_verified').notNull().default(false),
   isProfileComplete: boolean('is_profile_complete').notNull().default(false),
-  role: varchar('role', { length: 50 }).notNull().default('student'),
-  // What the user signed up TO DO, picked on the signup screen. Never a
-  // permission — `role` is the permission, and it only becomes 'coaching_owner'
-  // once a coaching actually exists (registerCoaching below). That circularity
-  // is why this column has to exist: it is the only thing that can answer
-  // "a verified user with no coaching just signed in — where do they belong?".
+  // Platform-level only — never a coaching-scoped value. Today that means
+  // 'super_admin' or the default 'student'; a user's role *within* a coaching
+  // lives on `memberships` and is read through `requireTenantRole`, never here.
+  accountRole: varchar('account_role', { length: 50 }).notNull().default('student'),
+  // What the user signed up TO DO, picked on the signup screen. Answers "a
+  // verified user with no coaching just signed in — did they mean to study or
+  // to run one?", which `accountRole` cannot: someone can own one coaching and
+  // teach in another, so there is no single coaching-scoped answer to put here.
   //
-  // It is also deliberately never rewritten. Deleting a coaching resets `role`
-  // to 'student', but the person is still someone who came here to run one, so
-  // they keep landing on create/join rather than in the student area.
+  // Deliberately never rewritten once set.
   signupIntent: varchar('signup_intent', { length: 20 }).notNull().default('student'),
-  tenantId: uuid('tenant_id').references(() => tenants.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })

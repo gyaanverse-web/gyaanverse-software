@@ -4,7 +4,7 @@ export interface ExamSession {
   id: string
   examId: string
   studentId: string
-  tenantId: string | null
+  tenantId: string
   attemptNumber: number
   status: SessionStatus
   startedAt: Date
