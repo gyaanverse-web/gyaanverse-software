@@ -18,13 +18,13 @@ declare module 'fastify' {
     user?: {
       id: string
       /**
-       * The **account-level** role from the auth session. Valid only for
-       * questions that sit outside any coaching (is this the platform
-       * `super_admin`?). Never authorise a `/tenant/*` action on this — a user
-       * can own one coaching and teach in another, so the account role and the
-       * role they hold *here* routinely differ. Use `req.tenantRole`.
+       * The **account-level** role from the auth session (`users.accountRole`).
+       * Valid only for questions that sit outside any coaching (is this the
+       * platform `super_admin`?). Never authorise a `/tenant/*` action on this —
+       * a user can own one coaching and teach in another, so the account role
+       * and the role they hold *here* routinely differ. Use `req.tenantRole`.
        */
-      role: Role
+      accountRole: Role
     }
     tenant?: Tenant
     /**

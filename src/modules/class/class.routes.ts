@@ -5,11 +5,11 @@ import { authenticate, requireTenantRole } from '../../middleware/auth.middlewar
 import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
 import {
   createClass,
-  getClass,
+  getClassForViewer,
   updateClass,
   deleteClass,
   getAllClasses,
-  reassignClassTeacher,
+  setClassTeachers,
   getClassesForTeacher,
   getClassesForStudent,
   generateClassJoinCode,
@@ -27,6 +27,7 @@ const createSchema = z.object({
   grade: z.string().min(1).max(50).optional(),
   description: z.string().max(1000).optional(),
   autoApprove: z.boolean().optional(),
+  teacherIds: z.array(z.string().uuid()).max(100).optional(),
 })
 
 const updateSchema = z.object({
@@ -45,9 +46,11 @@ const enrollmentActionSchema = z.object({
   action: z.enum(['approve', 'reject']),
 })
 
-const reassignSchema = z.object({
-  teacherId: z.string().uuid(),
+const teachersSchema = z.object({
+  teacherIds: z.array(z.string().uuid()).max(100),
 })
+
+const OWNER_ONLY = [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')]
 
 const AUTH = [{ bearerAuth: [] }]
 
@@ -60,7 +63,7 @@ export async function classRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Classes'],
         summary: 'Create a class',
-        description: 'Creates a new class (batch) within the resolved tenant. The authenticated teacher becomes the class owner. Enforces the plan\'s class limit.',
+        description: 'Creates a new class (batch) within the resolved tenant. Owner-only; teachers can optionally be assigned in the same call. Enforces the plan\'s class limit.',
         security: AUTH,
         body: {
           type: 'object',
@@ -69,11 +72,12 @@ export async function classRoutes(app: FastifyInstance) {
             name: { type: 'string', minLength: 2, maxLength: 255 },
             grade: { type: 'string', maxLength: 50, description: 'Grade level label (e.g. `Grade 10`)' },
             description: { type: 'string', maxLength: 1000 },
-            autoApprove: { type: 'boolean', description: 'If true, students are approved instantly on join. Defaults to false.' },
+            autoApprove: { type: 'boolean', description: 'If true, students are approved instantly on join. Defaults to true.' },
+            teacherIds: { type: 'array', items: { type: 'string', format: 'uuid' }, description: 'Teachers to assign. Each must be a `teacher` member of this coaching.' },
           },
         },
       },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')],
+      preHandler: OWNER_ONLY,
     },
     async (req, reply) => {
       const parsed = createSchema.safeParse(req.body)
@@ -83,7 +87,7 @@ export async function classRoutes(app: FastifyInstance) {
       const user = req.user!
       const cls = await createClass({
         tenantId: tenant.id,
-        teacherId: user.id,
+        createdBy: user.id,
         ...parsed.data,
       })
       reply.status(201).send({ class: cls })
@@ -96,7 +100,7 @@ export async function classRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Classes'],
         summary: 'List classes',
-        description: 'Returns classes visible to the authenticated user. Owners see all classes; teachers see their own; students see classes they are approved in or awaiting approval on, each carrying `enrollmentStatus`.',
+        description: 'Returns classes visible to the authenticated user. Owners see all classes; teachers see only the classes they are assigned to; students see classes they are approved in or awaiting approval on, each carrying `enrollmentStatus`.',
         security: AUTH,
       },
       preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher', 'student')],
@@ -184,8 +188,9 @@ export async function classRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
-      const cls = await getClass(id, tenant.id)
-      if (!cls) throw Errors.NOT_FOUND('Class')
+      const user = req.user!
+      // A teacher gets 404 unless assigned to this batch.
+      const cls = await getClassForViewer(id, tenant.id, { role: req.tenantRole!, id: user.id })
       reply.send({ class: cls })
     },
   )
@@ -196,7 +201,7 @@ export async function classRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Classes'],
         summary: 'Update a class',
-        description: 'Updates class details. Teachers may only update their own classes.',
+        description: 'Owner-only. Updates class details.',
         security: AUTH,
         params: {
           type: 'object',
@@ -213,7 +218,7 @@ export async function classRoutes(app: FastifyInstance) {
           },
         },
       },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')],
+      preHandler: OWNER_ONLY,
     },
     async (req, reply) => {
       const parsed = updateSchema.safeParse(req.body)
@@ -221,20 +226,20 @@ export async function classRoutes(app: FastifyInstance) {
 
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
-      const user = req.user!
-      const updated = await updateClass(id, tenant.id, user.id, req.tenantRole!, parsed.data)
+      const updated = await updateClass(id, tenant.id, parsed.data)
       reply.send({ class: updated })
     },
   )
 
-  // Reassign a batch to a different teacher — coaching_owner only.
-  app.patch(
-    '/tenant/classes/:id/teacher',
+  // Set the batch's teacher list — coaching_owner only. Replaces the whole
+  // list; an empty array unassigns everyone.
+  app.put(
+    '/tenant/classes/:id/teachers',
     {
       schema: {
         tags: ['Classes'],
-        summary: 'Reassign a class to another teacher',
-        description: 'Moves ownership of the batch to another teacher (or the owner). Owner-only — teachers cannot reassign their own classes away.',
+        summary: 'Set the teachers assigned to a class',
+        description: 'Owner-only. Replaces the class\'s teacher list with `teacherIds` (an empty array unassigns everyone). Each id must be a `teacher` member of this coaching. Newly added teachers are notified.',
         security: AUTH,
         params: {
           type: 'object',
@@ -243,19 +248,20 @@ export async function classRoutes(app: FastifyInstance) {
         },
         body: {
           type: 'object',
-          required: ['teacherId'],
-          properties: { teacherId: { type: 'string', format: 'uuid' } },
+          required: ['teacherIds'],
+          properties: { teacherIds: { type: 'array', items: { type: 'string', format: 'uuid' } } },
         },
       },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner')],
+      preHandler: OWNER_ONLY,
     },
     async (req, reply) => {
-      const parsed = reassignSchema.safeParse(req.body)
+      const parsed = teachersSchema.safeParse(req.body)
       if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
 
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
-      const updated = await reassignClassTeacher(id, tenant.id, parsed.data.teacherId)
+      const user = req.user!
+      const updated = await setClassTeachers(id, tenant.id, user.id, parsed.data.teacherIds)
       reply.send({ class: updated })
     },
   )
@@ -266,7 +272,7 @@ export async function classRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Classes'],
         summary: 'Delete a class',
-        description: 'Deletes the class and all associated join codes and enrollments. Teachers may only delete their own classes.',
+        description: 'Owner-only. Deletes the class and all associated join codes, enrollments and teacher assignments.',
         security: AUTH,
         params: {
           type: 'object',
@@ -274,18 +280,17 @@ export async function classRoutes(app: FastifyInstance) {
           properties: { id: { type: 'string', format: 'uuid' } },
         },
       },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')],
+      preHandler: OWNER_ONLY,
     },
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
-      const user = req.user!
-      const result = await deleteClass(id, tenant.id, user.id, req.tenantRole!)
+      const result = await deleteClass(id, tenant.id)
       reply.send(result)
     },
   )
 
-  // ── Join codes (teacher/owner manages) ────────────────────────────────────
+  // ── Join codes (owner) ────────────────────────────────────
 
   app.post(
     '/tenant/classes/:id/join-codes',
@@ -307,7 +312,7 @@ export async function classRoutes(app: FastifyInstance) {
           },
         },
       },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')],
+      preHandler: OWNER_ONLY,
     },
     async (req, reply) => {
       const parsed = joinCodeSchema.safeParse(req.body)
@@ -316,7 +321,7 @@ export async function classRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
       const user = req.user!
-      const record = await generateClassJoinCode(id, tenant.id, user.id, req.tenantRole!, {
+      const record = await generateClassJoinCode(id, tenant.id, user.id, {
         expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : undefined,
         maxUses: parsed.data.maxUses,
       })
@@ -337,13 +342,12 @@ export async function classRoutes(app: FastifyInstance) {
           properties: { id: { type: 'string', format: 'uuid' } },
         },
       },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')],
+      preHandler: OWNER_ONLY,
     },
     async (req, reply) => {
       const { id } = req.params as { id: string }
       const tenant = req.tenant!
-      const user = req.user!
-      const codes = await listClassJoinCodes(id, tenant.id, user.id, req.tenantRole!)
+      const codes = await listClassJoinCodes(id, tenant.id)
       reply.send({ joinCodes: codes })
     },
   )
@@ -364,18 +368,17 @@ export async function classRoutes(app: FastifyInstance) {
           },
         },
       },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')],
+      preHandler: OWNER_ONLY,
     },
     async (req, reply) => {
       const { id, codeId } = req.params as { id: string; codeId: string }
       const tenant = req.tenant!
-      const user = req.user!
-      const result = await revokeClassJoinCode(id, tenant.id, user.id, req.tenantRole!, codeId)
+      const result = await revokeClassJoinCode(id, tenant.id, codeId)
       reply.send(result)
     },
   )
 
-  // ── Student enrollment management (teacher/owner) ─────────────────────────
+  // ── Student enrollment (owner manages; assigned teachers read the roster) ─────────────────────────
 
   app.get(
     '/tenant/classes/:id/students',
@@ -383,7 +386,7 @@ export async function classRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Classes'],
         summary: 'List enrolled students',
-        description: 'Lists students enrolled in the class. Filter by enrollment status with `?status=`. Staff see contact details; a student enrolled in the batch sees approved classmates by name only, and `?status=` is ignored for them.',
+        description: 'Lists students enrolled in the class. Filter by enrollment status with `?status=`. The owner and the class\'s assigned teachers see contact details (an unassigned teacher gets 404); a student enrolled in the batch sees approved classmates by name only, and `?status=` is ignored for them.',
         security: AUTH,
         params: {
           type: 'object',
@@ -408,8 +411,8 @@ export async function classRoutes(app: FastifyInstance) {
       const allowed = ['pending', 'approved', 'rejected']
       if (status && !allowed.includes(status)) throw Errors.VALIDATION('status must be pending, approved, or rejected')
 
-      // The service decides what a student may see — it also checks that this
-      // student is actually approved in this batch before answering.
+      // The service decides what each viewer may see — a teacher must be assigned
+      // to the batch, a student actually approved in it.
       const students = await listClassStudents(id, tenant.id, status, { role: req.tenantRole!, id: user.id })
       reply.send({ students })
     },
@@ -438,7 +441,7 @@ export async function classRoutes(app: FastifyInstance) {
           },
         },
       },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')],
+      preHandler: OWNER_ONLY,
     },
     async (req, reply) => {
       const parsed = enrollmentActionSchema.safeParse(req.body)
@@ -446,8 +449,7 @@ export async function classRoutes(app: FastifyInstance) {
 
       const { id, studentId } = req.params as { id: string; studentId: string }
       const tenant = req.tenant!
-      const user = req.user!
-      const result = await updateEnrollmentStatus(id, tenant.id, studentId, user.id, req.tenantRole!, parsed.data.action)
+      const result = await updateEnrollmentStatus(id, tenant.id, studentId, parsed.data.action)
       reply.send(result)
     },
   )
@@ -458,7 +460,7 @@ export async function classRoutes(app: FastifyInstance) {
       schema: {
         tags: ['Classes'],
         summary: 'Remove a student from a class',
-        description: 'Removes the student\'s enrollment row (pending or approved). Teachers may only remove students from their own classes.',
+        description: 'Owner-only. Removes the student\'s enrollment row (pending or approved).',
         security: AUTH,
         params: {
           type: 'object',
@@ -469,13 +471,12 @@ export async function classRoutes(app: FastifyInstance) {
           },
         },
       },
-      preHandler: [authenticate, tenantMiddleware, requireTenantRole('coaching_owner', 'teacher')],
+      preHandler: OWNER_ONLY,
     },
     async (req, reply) => {
       const { id, studentId } = req.params as { id: string; studentId: string }
       const tenant = req.tenant!
-      const user = req.user!
-      const result = await removeStudentFromClass(id, tenant.id, studentId, user.id, req.tenantRole!)
+      const result = await removeStudentFromClass(id, tenant.id, studentId)
       reply.send(result)
     },
   )

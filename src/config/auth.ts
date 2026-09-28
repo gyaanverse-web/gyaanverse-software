@@ -151,11 +151,16 @@ export const auth = betterAuth({
   user: {
     modelName: 'users',
     additionalFields: {
+      // Exposed on the session as `role` (unchanged wire name — the frontend
+      // and every `/api/auth/get-session` consumer already key off it) while
+      // the underlying column is `users.accountRole`. Platform-level only:
+      // 'super_admin' or the default 'student', never a coaching-scoped value.
       role: {
         type: 'string',
         required: false,
         defaultValue: 'student',
         input: false, // server-controlled only
+        fieldName: 'accountRole',
       },
       // The one role-ish field the client MAY set, because it grants nothing:
       // every permission is authorised off the `memberships` row by
@@ -174,11 +179,6 @@ export const auth = betterAuth({
         transform: {
           input: (value: unknown) => (value === 'coaching_owner' ? 'coaching_owner' : 'student'),
         },
-      },
-      tenantId: {
-        type: 'string',
-        required: false,
-        input: false,
       },
       isProfileComplete: {
         type: 'boolean',

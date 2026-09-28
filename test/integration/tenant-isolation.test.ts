@@ -316,6 +316,27 @@ describe('CRITICAL: A-user on A, B-resource id in the URL', () => {
     expect(after?.title).toBe('B original')
   })
 
+  // F-9: /tenant/exams/:id's student branch (getExamForStudent) is reached via
+  // canStudentAccess, which allows any authenticated student onto a public
+  // exam with no tenant check of its own — before this closed, A's student
+  // could read B's public exam through A's own /tenant/ prefix.
+  it("a student can't reach B's public exam through A's /tenant/ prefix", async () => {
+    const a = await seedTenantWithUsers()
+    const b = await seedTenantWithUsers()
+    const bExam = await createTestExam({
+      tenantId: b.tenant.id,
+      createdBy: b.teacher.id,
+      status: 'live',
+      visibility: 'public_free',
+    })
+
+    const res = await call('GET', `/tenant/exams/${bExam.id}`, {
+      as: await signIn(a.student.id),
+      slug: a.tenant.slug,
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
   it('exam sessions and reports lists for a B exam → 404', async () => {
     const a = await seedTenantWithUsers()
     const b = await seedTenantWithUsers()
@@ -450,8 +471,13 @@ describe('F-2 pin: global role never widens an in-tenant view', () => {
     const elsewhere = await seedTenantWithUsers()
     await createMembership({ userId: elsewhere.owner.id, tenantId: a.tenant.id, role: 'student' })
 
+    // Force-set the fixture's account role directly — real registerCoaching
+    // never writes 'coaching_owner' here any more (multi-tenancy audit Core
+    // retirement), so this simulates the state defense-in-depth must still
+    // survive: nothing reads this column for a tenant authorization decision.
+    await db.update(users).set({ accountRole: 'coaching_owner' }).where(eq(users.id, elsewhere.owner.id))
     const [account] = await db.select().from(users).where(eq(users.id, elsewhere.owner.id))
-    expect(account.role).toBe('coaching_owner') // precondition, or the test proves nothing
+    expect(account.accountRole).toBe('coaching_owner') // precondition, or the test proves nothing
 
     return { a, intruder: elsewhere.owner }
   }

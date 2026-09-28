@@ -176,6 +176,34 @@
       "when": 1789573806989,
       "tag": "0024_flaky_sasquatch",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789623429598,
+      "tag": "0025_retire_user_tenant_vestige",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789639495785,
+      "tag": "0026_gray_jimmy_woo",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790064001625,
+      "tag": "0027_fee_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790079286509,
+      "tag": "0028_class_teachers",
+      "breakpoints": true
     }
   ]
 }

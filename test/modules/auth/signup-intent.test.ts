@@ -23,7 +23,7 @@ async function signUp(extra: Record<string, unknown>) {
     body: { name: 'Test Person', email, password: 'password1234', ...extra },
   })
   const [row] = await db
-    .select({ signupIntent: users.signupIntent, role: users.role })
+    .select({ signupIntent: users.signupIntent, role: users.accountRole })
     .from(users)
     .where(eq(users.email, email))
     .limit(1)
@@ -80,14 +80,5 @@ describe('signupIntent on sign-up', () => {
     const row = await signUp({ role: 'coaching_owner', signupIntent: 'coaching_owner' })
     expect(row.role).toBe('student')
     expect(row.signupIntent).toBe('coaching_owner')
-  })
-
-  it('CRITICAL: refuses a direct attempt to set tenantId', async () => {
-    // `tenantId` is input: false with NO defaultValue, so this is the branch
-    // that really does reject. Being able to set it at signup would place an
-    // account inside someone else's coaching, so it must never become writable.
-    await expect(
-      signUp({ tenantId: '00000000-0000-0000-0000-000000000000' }),
-    ).rejects.toThrow()
   })
 })

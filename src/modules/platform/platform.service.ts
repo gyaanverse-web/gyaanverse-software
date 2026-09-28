@@ -20,7 +20,7 @@ import { platformSettings } from './platform.schema.js'
 // So: Postgres, read through a short in-memory cache.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const PLATFORM_KEYS = ['billing_enabled'] as const
+export const PLATFORM_KEYS = ['billing_enabled', 'fees_enabled'] as const
 export type PlatformKey = (typeof PLATFORM_KEYS)[number]
 
 export interface PlatformSettings {
@@ -34,6 +34,15 @@ export interface PlatformSettings {
    * billing on later restores each coaching to the plan it was already on.
    */
   billing_enabled: boolean
+  /**
+   * Is the fee-management module live?
+   *
+   * A platform kill-switch, not a plan feature — fee management is the reason
+   * a coaching would pay us at all, so it is never gated behind a plan tier
+   * (see fee-management-LLD.md §9). `false` means every `/tenant/fees/*` and
+   * `/fees/*` route answers 404.
+   */
+  fees_enabled: boolean
 }
 
 /**
@@ -46,6 +55,7 @@ export interface PlatformSettings {
  */
 const DEFAULTS: PlatformSettings = {
   billing_enabled: false,
+  fees_enabled: false,
 }
 
 /**
@@ -80,6 +90,9 @@ async function load(): Promise<PlatformSettings> {
     if (row.key === 'billing_enabled' && typeof row.value === 'boolean') {
       settings.billing_enabled = row.value
     }
+    if (row.key === 'fees_enabled' && typeof row.value === 'boolean') {
+      settings.fees_enabled = row.value
+    }
   }
 
   return settings
@@ -103,6 +116,10 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
 
 export async function isBillingEnabled(): Promise<boolean> {
   return (await getPlatformSettings()).billing_enabled
+}
+
+export async function isFeesEnabled(): Promise<boolean> {
+  return (await getPlatformSettings()).fees_enabled
 }
 
 export async function setPlatformSetting(

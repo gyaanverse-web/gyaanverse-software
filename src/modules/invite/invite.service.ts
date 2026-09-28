@@ -263,7 +263,6 @@ export async function acceptInvite(userId: string, token: string) {
 
   await db.transaction(async (tx) => {
     await tx.insert(memberships).values({ userId, tenantId: invite.tenantId, role: 'teacher' })
-    await tx.update(users).set({ role: 'teacher', tenantId: invite.tenantId }).where(eq(users.id, userId))
     await tx.update(invites).set({ status: 'accepted' }).where(eq(invites.id, invite.id))
   })
 

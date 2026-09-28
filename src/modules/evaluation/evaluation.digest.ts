@@ -159,7 +159,7 @@ export async function getDigestRecipients(): Promise<string[]> {
   const operators = await db
     .select({ email: users.email })
     .from(users)
-    .where(eq(users.role, 'super_admin'))
+    .where(eq(users.accountRole, 'super_admin'))
 
   const extra = env.OPS_DIGEST_EMAILS.split(',')
     .map((s) => s.trim())

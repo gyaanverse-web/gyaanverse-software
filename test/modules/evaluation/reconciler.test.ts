@@ -466,7 +466,7 @@ describe('reconciler — storm guard', () => {
 
     const jobIds: string[] = []
     for (let i = 0; i < 105; i++) {
-      const student = await createTestUser({ role: 'student' })
+      const student = await createTestUser()
       const session = await createTestSession({
         examId: exam.id,
         studentId: student.id,

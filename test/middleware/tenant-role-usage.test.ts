@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url'
 // ─────────────────────────────────────────────────────────────────────────────
 // Route handlers must never authorise on the ACCOUNT role.
 //
-// `req.user.role` is one global column. A user can own one coaching and be a
-// student in another, so in the second coaching it still says `coaching_owner`.
+// `req.user.accountRole` is one global column. A user can own one coaching and
+// be a student in another, so in the second coaching it still said
+// `coaching_owner` back when this column carried coaching-scoped values.
 // Handlers that branched on it handed that student the owner's view: every class,
 // the full roster with emails and phone numbers, every attempt and report
 // (multi-tenancy audit F-2). `requireTenantRole` publishes the role held in THIS
@@ -27,7 +28,7 @@ function routeFiles(dir: string): string[] {
   })
 }
 
-// Comments may explain the rule by naming `req.user.role`; only code counts.
+// Comments may explain the rule by naming `req.user.accountRole`; only code counts.
 // Block comments keep their newlines so reported line numbers stay accurate.
 function stripComments(source: string): string {
   return source
@@ -42,12 +43,12 @@ describe('route handlers — tenant role, not account role', () => {
     expect(files.length).toBeGreaterThan(0)
   })
 
-  it('CRITICAL: no *.routes.ts reads user.role', () => {
+  it('CRITICAL: no *.routes.ts reads user.role / user.accountRole', () => {
     const offenders = files.flatMap((file) =>
       stripComments(readFileSync(file, 'utf8'))
         .split('\n')
         .map((line, i) => ({ line, n: i + 1 }))
-        .filter(({ line }) => /\buser\s*[!?]?\.\s*role\b/.test(line))
+        .filter(({ line }) => /\buser\s*[!?]?\.\s*(accountRole|role)\b/.test(line))
         .map(({ line, n }) => `${relative(SRC, file)}:${n}  ${line.trim()}`),
     )
     expect(offenders).toEqual([])

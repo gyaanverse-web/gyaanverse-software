@@ -19,7 +19,7 @@ describe('canStudentAccess — public_free', () => {
       visibility: 'public_free',
       status: 'live',
     })
-    const anyStudent = await createTestUser({ role: 'student' })
+    const anyStudent = await createTestUser()
 
     expect(await canStudentAccess(anyStudent.id, exam.id)).toBe(true)
   })
@@ -32,7 +32,7 @@ describe('canStudentAccess — public_free', () => {
       visibility: 'public_free',
       status: 'draft',
     })
-    const anyStudent = await createTestUser({ role: 'student' })
+    const anyStudent = await createTestUser()
 
     expect(await canStudentAccess(anyStudent.id, exam.id)).toBe(false)
   })
@@ -48,7 +48,7 @@ describe('canStudentAccess — public_paid', () => {
       status: 'live',
       price: '99.00',
     })
-    const anyStudent = await createTestUser({ role: 'student' })
+    const anyStudent = await createTestUser()
 
     expect(await canStudentAccess(anyStudent.id, exam.id)).toBe(false)
   })
@@ -62,7 +62,7 @@ describe('canStudentAccess — public_paid', () => {
       status: 'live',
       price: '99.00',
     })
-    const anyStudent = await createTestUser({ role: 'student' })
+    const anyStudent = await createTestUser()
     await createTestPurchase({ studentId: anyStudent.id, examId: exam.id })
 
     expect(await canStudentAccess(anyStudent.id, exam.id)).toBe(true)
@@ -77,8 +77,8 @@ describe('canStudentAccess — public_paid', () => {
       status: 'live',
       price: '99.00',
     })
-    const buyer = await createTestUser({ role: 'student' })
-    const freeloader = await createTestUser({ role: 'student' })
+    const buyer = await createTestUser()
+    const freeloader = await createTestUser()
     await createTestPurchase({ studentId: buyer.id, examId: exam.id })
 
     expect(await canStudentAccess(buyer.id, exam.id)).toBe(true)
@@ -129,9 +129,9 @@ describe('canStudentAccess — private', () => {
     const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
     await linkExamToClass(exam.id, cls.id)
 
-    const pendingStudent = await createTestUser({ role: 'student', tenantId: tenant.id })
+    const pendingStudent = await createTestUser()
     await enrollStudent({ classId: cls.id, studentId: pendingStudent.id, status: 'pending' })
-    const rejectedStudent = await createTestUser({ role: 'student', tenantId: tenant.id })
+    const rejectedStudent = await createTestUser()
     await enrollStudent({ classId: cls.id, studentId: rejectedStudent.id, status: 'rejected' })
 
     expect(await canStudentAccess(pendingStudent.id, exam.id)).toBe(false)

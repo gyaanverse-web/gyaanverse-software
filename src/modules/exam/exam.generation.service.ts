@@ -81,7 +81,7 @@ export async function generateIntoDraft(input: {
   // Resolve + tenant-check the classes before doing any generation work, so a
   // bad class id fails fast instead of after a costly bank query.
   const classIds = [...new Set(input.classIds ?? [])]
-  const classRows = classIds.length > 0 ? await resolveTenantClasses(classIds, tenantId) : []
+  const classRows = classIds.length > 0 ? await resolveTenantClasses(classIds, tenantId, { assignedTo: input.requesterId }) : []
 
   const paramError = validateGenerationParams(params)
   if (paramError) throw new AppError('VALIDATION', paramError, 422)

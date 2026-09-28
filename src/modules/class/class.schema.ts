@@ -5,7 +5,6 @@ import { users } from '../auth/auth.schema.js'
 export const classes = pgTable('classes', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
-  teacherId: uuid('teacher_id').notNull().references(() => users.id),
   name: varchar('name', { length: 255 }).notNull(),
   grade: varchar('grade', { length: 50 }),
   description: text('description'),
@@ -13,6 +12,21 @@ export const classes = pgTable('classes', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('classes_tenant_id_idx').on(t.tenantId)])
+
+// Teachers assigned to a batch by the coaching owner. Many-to-many, all equal —
+// there is no lead teacher, and a batch may have none. Assignment grants
+// read-only access; every write on a class is owner-only.
+export const classTeachers = pgTable('class_teachers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  classId: uuid('class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),
+  teacherId: uuid('teacher_id').notNull().references(() => users.id),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  assignedBy: uuid('assigned_by').notNull().references(() => users.id),
+  assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('class_teachers_class_teacher_uniq').on(t.classId, t.teacherId),
+  index('class_teachers_tenant_teacher_idx').on(t.tenantId, t.teacherId),
+])
 
 export const classMembers = pgTable('class_members', {
   id: uuid('id').primaryKey().defaultRandom(),
