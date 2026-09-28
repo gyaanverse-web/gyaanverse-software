@@ -12,7 +12,7 @@ import { users, accounts } from '../src/modules/auth/auth.schema.js'
 import { tenants } from '../src/modules/tenant/tenant.schema.js'
 import { createTenant } from '../src/modules/tenant/tenant.service.js'
 import { memberships } from '../src/modules/membership/membership.schema.js'
-import { classes, classMembers } from '../src/modules/class/class.schema.js'
+import { classes, classMembers, classTeachers } from '../src/modules/class/class.schema.js'
 import {
   subjects, modules as modulesTable, chapters, sections, concepts, questionBank,
 } from '../src/modules/question-bank/question-bank.schema.js'
@@ -308,11 +308,8 @@ async function tenantDetail(tenantId: string) {
       id: classes.id,
       name: classes.name,
       grade: classes.grade,
-      teacherId: classes.teacherId,
-      teacherName: users.name,
     })
     .from(classes)
-    .leftJoin(users, eq(users.id, classes.teacherId))
     .where(eq(classes.tenantId, tenantId))
     .orderBy(asc(classes.name))
 
@@ -482,19 +479,30 @@ async function createClass(b: Record<string, string>) {
     .from(classes)
     .where(and(eq(classes.tenantId, tenantId), eq(classes.name, name)))
     .limit(1)
-  if (clash) return { classId: clash.id, message: `Class '${name}' already existed — reusing it.` }
+  // The owner assigns teachers in the app, so the owner is recorded as the assigner here too.
+  const [tenant] = await db.select({ ownerId: tenants.ownerId }).from(tenants).where(eq(tenants.id, tenantId)).limit(1)
+  if (!tenant) throw new Error('Coaching not found')
+  const assign = (classId: string) =>
+    db.insert(classTeachers)
+      .values({ classId, teacherId, tenantId, assignedBy: tenant.ownerId })
+      .onConflictDoNothing()
+
+  if (clash) {
+    await assign(clash.id)
+    return { classId: clash.id, message: `Class '${name}' already existed — reusing it, teacher assigned.` }
+  }
 
   const id = crypto.randomUUID()
   await db.insert(classes).values({
     id,
     tenantId,
-    teacherId,
     name,
     grade: b.grade?.trim() || null,
     description: b.description?.trim() || null,
     autoApprove: true,
   })
-  return { classId: id, message: `Class '${name}' created.` }
+  await assign(id)
+  return { classId: id, message: `Class '${name}' created and assigned.` }
 }
 
 async function createStudents(b: Record<string, unknown>) {

@@ -16,6 +16,12 @@ export type NotificationType =
   | 'payment_confirmed'
   | 'payment_failed'
   | 'plan_limit_warning'
+  // Fee management (coaching → student ledger, LLD §9).
+  | 'fee_invoice_issued'
+  | 'fee_due_reminder'
+  | 'fee_overdue'
+  | 'fee_payment_recorded'
+  | 'fee_payment_bounced'
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent'
 export type DeliveryChannel = 'email' | 'sms'
@@ -111,4 +117,9 @@ export const NOTIFICATION_CONFIG: Record<NotificationType, NotificationConfig> =
   payment_confirmed:  { priority: 'normal', email: true,  sms: false },
   payment_failed:     { priority: 'urgent', email: true,  sms: true  },
   plan_limit_warning: { priority: 'high',   email: true,  sms: false },
+  fee_invoice_issued:   { priority: 'normal', email: true,  sms: false },
+  fee_due_reminder:     { priority: 'high',   email: true,  sms: true  },
+  fee_overdue:          { priority: 'urgent', email: true,  sms: true  },
+  fee_payment_recorded: { priority: 'normal', email: true,  sms: false },
+  fee_payment_bounced:  { priority: 'urgent', email: true,  sms: true  },
 }

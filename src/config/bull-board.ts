@@ -6,6 +6,7 @@ import { getEvaluationQueue } from '@modules/evaluation/evaluation.service.js'
 import { getEmailQueue, getSmsQueue, getBulkQueue } from '@modules/notification/notification.queues.js'
 import { getExamLifecycleQueue } from '@modules/exam/exam.scheduler.js'
 import { getReconcilerQueue } from '@modules/evaluation/evaluation.reconciler.js'
+import { getFeeAssignmentQueue } from '@modules/fee/fee.queues.js'
 import { mountOpsSurface } from './ops-surface.js'
 import { env } from './env.js'
 
@@ -60,6 +61,7 @@ export function createBoard() {
       // quietly going back to `pending`. Its repeat schedule showing up here is
       // the cheapest way to answer "is the self-healing actually armed?".
       new BullMQAdapter(getReconcilerQueue()),
+      new BullMQAdapter(getFeeAssignmentQueue()),
     ],
     serverAdapter,
   })

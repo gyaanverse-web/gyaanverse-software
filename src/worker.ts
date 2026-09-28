@@ -36,6 +36,19 @@ import {
   ensureDigestSchedule,
   sendReviewDigest,
 } from './modules/evaluation/evaluation.digest.js'
+import {
+  FEE_ASSIGNMENT_QUEUE,
+  FEE_LIFECYCLE_QUEUE,
+  type FeeAssignmentJobPayload,
+} from './modules/fee/fee.queues.js'
+import { runAssignmentFanout } from './modules/fee/fee.service.js'
+import {
+  GUARDIAN_NOTIFY_JOB,
+  deliverGuardianMessage,
+  ensureFeeLifecycleSchedule,
+  runFeeLifecycleTick,
+  type GuardianNotifyPayload,
+} from './modules/fee/fee.reminder.js'
 
 const connection = new IORedis(env.REDIS_URL, {
   maxRetriesPerRequest: null,
@@ -305,6 +318,45 @@ if (runsGeneral) {
   // with the reconciler's and the digest's — see the note there for why
   // registering these on boot alone was not enough.
 
+  // ── Fee assignment fan-out worker ───────────────────────────────────────────
+  // One job per (structure, class) assign call — see fee.service.ts#runAssignmentFanout
+  // for why this can't run inline on the request. No repeatable schedule: this
+  // queue only ever carries jobs an owner explicitly enqueued.
+
+  const feeAssignmentWorker = new Worker(
+    FEE_ASSIGNMENT_QUEUE,
+    async (job) => {
+      const result = await runAssignmentFanout(job.data as FeeAssignmentJobPayload)
+      console.log(`[fee-assignment] created=${result.created} skipped=${result.skipped}`)
+    },
+    { connection },
+  )
+
+  // ── Fee lifecycle worker (daily tick + guardian deliveries) ─────────────────
+  // The tick sends reminders, levies late fees and runs the fee reconciler —
+  // see fee.reminder.ts. Guardians have no account, so their messages ride
+  // this queue rather than the per-user notification queues. Quiet on a day
+  // when nothing was due, like every other tick here.
+
+  const feeLifecycleWorker = new Worker(
+    FEE_LIFECYCLE_QUEUE,
+    async (job) => {
+      if (job.name === GUARDIAN_NOTIFY_JOB) {
+        await deliverGuardianMessage(job.data as GuardianNotifyPayload)
+        return
+      }
+      const r = await runFeeLifecycleTick()
+      if (r.reminders || r.lateFees || r.errors || r.reconcile?.repaired || r.reconcile?.violations) {
+        console.log(
+          `[fee-lifecycle] reminders=${r.reminders} guardian=${r.guardianMessages} lateFees=${r.lateFees} ` +
+            `errors=${r.errors} reconciled=${r.reconcile?.checked ?? 0} repaired=${r.reconcile?.repaired ?? 0} ` +
+            `violations=${r.reconcile?.violations ?? 0}`,
+        )
+      }
+    },
+    { connection },
+  )
+
   // ── Evaluation reconciler (self-healing sweeps) ─────────────────────────────
   //
   // Its own queue rather than another branch of runLifecycleTick: this sweep
@@ -384,6 +436,7 @@ if (runsGeneral) {
       ensureLifecycleSchedule(),
       ensureReconcilerSchedule(),
       ensureDigestSchedule(),
+      ensureFeeLifecycleSchedule(),
     ])
     for (const r of results) {
       if (r.status === 'rejected') {
@@ -398,13 +451,15 @@ if (runsGeneral) {
   connection.on('ready', () => void assertSchedules())
   scheduleGuards.push(scheduleGuard)
 
-  workers.push(emailWorker, smsWorker, bulkWorker, lifecycleWorker, reconcilerWorker)
+  workers.push(emailWorker, smsWorker, bulkWorker, lifecycleWorker, reconcilerWorker, feeAssignmentWorker, feeLifecycleWorker)
   started.push(
     'notification-email',
     'notification-sms',
     'notification-bulk',
     EXAM_LIFECYCLE_QUEUE,
     EVALUATION_RECONCILER_QUEUE,
+    FEE_ASSIGNMENT_QUEUE,
+    FEE_LIFECYCLE_QUEUE,
   )
 }
 

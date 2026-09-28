@@ -1,6 +1,10 @@
 export {
   createClass,
   getClass,
+  getClassForViewer,
+  isTeacherAssigned,
+  getAssignedClassIds,
+  setClassTeachers,
   updateClass,
   deleteClass,
   getAllClasses,

@@ -8,7 +8,7 @@ import { db } from '@shared/db.js'
 import { tenants } from '@modules/tenant/tenant.schema.js'
 import { users } from '@modules/auth/auth.schema.js'
 import { memberships, coachingJoinCodes } from '@modules/membership/membership.schema.js'
-import { classes, classMembers } from '@modules/class/class.schema.js'
+import { classes, classMembers, classTeachers } from '@modules/class/class.schema.js'
 import { exams, questions, examClasses } from '@modules/exam/exam.schema.js'
 import { subjects } from '@modules/question-bank/question-bank.schema.js'
 import { examSessions, sessionAnswers } from '@modules/exam-session/exam-session.schema.js'
@@ -93,9 +93,14 @@ export async function createMembership(params: {
 
 // ── Class + class member ──────────────────────────────────────────────────
 
+/**
+ * A batch, with `teacherId` (if given) assigned to it through `class_teachers`.
+ * Inserted directly, so it skips the service's "must be a teacher member"
+ * check — tests that need that rule go through `createClass`/`setClassTeachers`.
+ */
 export async function createTestClass(params: {
   tenantId: string
-  teacherId: string
+  teacherId?: string
   name?: string
   autoApprove?: boolean
 }) {
@@ -103,12 +108,20 @@ export async function createTestClass(params: {
     .insert(classes)
     .values({
       tenantId: params.tenantId,
-      teacherId: params.teacherId,
       name: params.name ?? `Class ${uniq()}`,
       autoApprove: params.autoApprove ?? true,
     })
     .returning()
+  if (params.teacherId) await assignTeacher({ classId: c.id, tenantId: params.tenantId, teacherId: params.teacherId })
   return c
+}
+
+export async function assignTeacher(params: { classId: string; tenantId: string; teacherId: string }) {
+  const [row] = await db
+    .insert(classTeachers)
+    .values({ ...params, assignedBy: params.teacherId })
+    .returning()
+  return row
 }
 
 export async function enrollStudent(params: {

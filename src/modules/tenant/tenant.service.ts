@@ -3,7 +3,7 @@ import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
 import { tenants } from './tenant.schema.js'
 import { memberships, coachingJoinCodes } from '../membership/membership.schema.js'
-import { classes, classMembers, joinCodes } from '../class/class.schema.js'
+import { classes, classMembers, classTeachers, joinCodes } from '../class/class.schema.js'
 import { exams } from '../exam/exam.schema.js'
 import { users } from '../auth/auth.schema.js'
 import { assertWithinLimit } from '../billing/billing.service.js'
@@ -262,14 +262,14 @@ export async function listTeachersWithWorkload(tenantId: string) {
 
   const classAgg = await db
     .select({
-      teacherId: classes.teacherId,
-      classCount: sql<number>`count(distinct ${classes.id})`.mapWith(Number),
+      teacherId: classTeachers.teacherId,
+      classCount: sql<number>`count(distinct ${classTeachers.classId})`.mapWith(Number),
       studentCount: sql<number>`count(distinct ${classMembers.studentId}) filter (where ${classMembers.status} = 'approved')`.mapWith(Number),
     })
-    .from(classes)
-    .leftJoin(classMembers, eq(classMembers.classId, classes.id))
-    .where(and(eq(classes.tenantId, tenantId), inArray(classes.teacherId, teacherIds)))
-    .groupBy(classes.teacherId)
+    .from(classTeachers)
+    .leftJoin(classMembers, eq(classMembers.classId, classTeachers.classId))
+    .where(and(eq(classTeachers.tenantId, tenantId), inArray(classTeachers.teacherId, teacherIds)))
+    .groupBy(classTeachers.teacherId)
 
   const examAgg = await db
     .select({
@@ -326,6 +326,7 @@ export async function deleteCoaching(tenantId: string, requesterId: string): Pro
 
     const classIds = tenantClasses.map((c) => c.id)
     if (classIds.length > 0) {
+      await tx.delete(classTeachers).where(inArray(classTeachers.classId, classIds))
       await tx.delete(classMembers).where(inArray(classMembers.classId, classIds))
       await tx.delete(joinCodes).where(inArray(joinCodes.classId, classIds))
     }
@@ -368,9 +369,17 @@ export async function removeMember(tenantId: string, targetUserId: string, reque
     throw new AppError('FORBIDDEN', 'Cannot remove the coaching owner', 403)
   }
 
-  await db
-    .delete(memberships)
-    .where(and(eq(memberships.userId, targetUserId), eq(memberships.tenantId, tenantId)))
+  // Nothing cascades from memberships, so a departing teacher's batch
+  // assignments go in the same transaction — otherwise they'd linger on the
+  // owner's class cards and in the workload counts.
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(classTeachers)
+      .where(and(eq(classTeachers.teacherId, targetUserId), eq(classTeachers.tenantId, tenantId)))
+    await tx
+      .delete(memberships)
+      .where(and(eq(memberships.userId, targetUserId), eq(memberships.tenantId, tenantId)))
+  })
 
   return { success: true }
 }

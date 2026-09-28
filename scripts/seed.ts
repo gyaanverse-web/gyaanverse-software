@@ -5,7 +5,7 @@ import { eq, and } from 'drizzle-orm'
 import { users, accounts } from '../src/modules/auth/auth.schema.js'
 import { tenants } from '../src/modules/tenant/tenant.schema.js'
 import { memberships } from '../src/modules/membership/membership.schema.js'
-import { classes, classMembers } from '../src/modules/class/class.schema.js'
+import { classes, classMembers, classTeachers } from '../src/modules/class/class.schema.js'
 import { exams, questions } from '../src/modules/exam/exam.schema.js'
 import { subjects, modules, chapters, questionBank } from '../src/modules/question-bank/question-bank.schema.js'
 
@@ -207,11 +207,20 @@ async function upsertClass(
     .select({ id: classes.id })
     .from(classes)
     .where(and(eq(classes.tenantId, tenantId), eq(classes.name, name)))
-  if (existing) { t.existed(); return existing.id }
 
-  const id = crypto.randomUUID()
-  await db.insert(classes).values({ id, tenantId, teacherId, name, description, autoApprove: true })
-  t.created()
+  let id: string
+  if (existing) {
+    t.existed()
+    id = existing.id
+  } else {
+    id = crypto.randomUUID()
+    await db.insert(classes).values({ id, tenantId, name, description, autoApprove: true })
+    t.created()
+  }
+  // Owner-assigned, as in the app.
+  await db.insert(classTeachers)
+    .values({ classId: id, teacherId, tenantId, assignedBy: ownerId })
+    .onConflictDoNothing()
   return id
 }
 

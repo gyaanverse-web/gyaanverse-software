@@ -1,13 +1,17 @@
 export interface Class {
   id: string
   tenantId: string
-  teacherId: string
   name: string
   grade: string | null
   description: string | null
   autoApprove: boolean
   createdAt: Date
   updatedAt: Date
+}
+
+export interface ClassTeacherRef {
+  id: string
+  name: string
 }
 
 export interface ClassMember {

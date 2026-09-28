@@ -5,6 +5,7 @@ import {
   createTestUser,
   createMembership,
   createTestClass,
+  assignTeacher,
   enrollStudent,
   createTestExam,
   linkExamToClass,
@@ -76,15 +77,25 @@ describe('getClassesForStudent', () => {
     expect(rows.map((r) => r.id)).toEqual([mine.id])
   })
 
-  it('attaches the batch teacher name', async () => {
-    const { tenant, student } = await seedTenantWithUsers()
-    const teacher = await createTestUser({ name: 'Rita Bose' })
-    await createMembership({ userId: teacher.id, tenantId: tenant.id, role: 'teacher' })
-    const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
+  it("attaches every assigned teacher's name", async () => {
+    const { tenant, teacher, student } = await seedTenantWithUsers()
+    const rita = await createTestUser({ name: 'Rita Bose' })
+    await createMembership({ userId: rita.id, tenantId: tenant.id, role: 'teacher' })
+    const cls = await createTestClass({ tenantId: tenant.id, teacherId: rita.id })
+    await assignTeacher({ classId: cls.id, tenantId: tenant.id, teacherId: teacher.id })
     await enrollStudent({ classId: cls.id, studentId: student.id })
 
     const [row] = await getClassesForStudent(student.id, tenant.id)
-    expect(row.teacherName).toBe('Rita Bose')
+    expect(row.teachers.map((t) => t.name)).toEqual(['Rita Bose', teacher.name])
+  })
+
+  it('returns an empty teacher list for a batch with none assigned', async () => {
+    const { tenant, student } = await seedTenantWithUsers()
+    const cls = await createTestClass({ tenantId: tenant.id })
+    await enrollStudent({ classId: cls.id, studentId: student.id })
+
+    const [row] = await getClassesForStudent(student.id, tenant.id)
+    expect(row.teachers).toEqual([])
   })
 
   describe('studentCount', () => {
@@ -202,12 +213,12 @@ describe('listClassStudents', () => {
       expect(pending[0].status).toBe('pending')
     })
 
-    it('is unchanged when called with no viewer at all', async () => {
-      const { tenant, teacher } = await seedTenantWithUsers()
+    it('the owner sees every status with contact details', async () => {
+      const { tenant, owner, teacher } = await seedTenantWithUsers()
       const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
       await addStudent(tenant.id, { classId: cls.id, status: 'pending' })
 
-      const rows = await listClassStudents(cls.id, tenant.id)
+      const rows = await listClassStudents(cls.id, tenant.id, undefined, { role: 'coaching_owner', id: owner.id })
       expect(rows).toHaveLength(1)
       expect(rows[0]).toHaveProperty('email')
     })

@@ -130,6 +130,15 @@ export const env = {
   // unsubscribe the people who can actually clear the queue.
   OPS_DIGEST_EMAILS: process.env.OPS_DIGEST_EMAILS ?? '',
 
+  // ── Fee lifecycle tick ───────────────────────────────────────────────────
+  //
+  // Once a day: due/overdue reminders, late fees, then the balance reconciler.
+  // Morning in India so a reminder lands before the front desk opens, not at
+  // midnight. Reminder offsets are whole days, so running more often than daily
+  // buys nothing — the reminder log makes a second run a no-op anyway.
+  FEE_LIFECYCLE_CRON: process.env.FEE_LIFECYCLE_CRON ?? '0 9 * * *',
+  FEE_LIFECYCLE_TZ: process.env.FEE_LIFECYCLE_TZ ?? 'Asia/Kolkata',
+
   EVAL_ENGINE_URL: process.env.EVAL_ENGINE_URL ?? 'http://localhost:5000/evaluation_engine',
   EVAL_ENGINE_TIMEOUT_MS: parseInt(process.env.EVAL_ENGINE_TIMEOUT_MS ?? '120000', 10),
   EVAL_DEFAULT_COLLECTION: process.env.EVAL_DEFAULT_COLLECTION ?? '',
