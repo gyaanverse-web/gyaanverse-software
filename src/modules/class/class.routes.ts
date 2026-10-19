@@ -18,6 +18,7 @@ import {
   previewClassJoinCode,
   useClassJoinCode,
   listClassStudents,
+  addStudentsToClass,
   updateEnrollmentStatus,
   removeStudentFromClass,
 } from './class.service.js'
@@ -44,6 +45,10 @@ const joinCodeSchema = z.object({
 
 const enrollmentActionSchema = z.object({
   action: z.enum(['approve', 'reject']),
+})
+
+const addStudentsSchema = z.object({
+  studentIds: z.array(z.string().uuid()).min(1).max(500),
 })
 
 const teachersSchema = z.object({
@@ -415,6 +420,40 @@ export async function classRoutes(app: FastifyInstance) {
       // to the batch, a student actually approved in it.
       const students = await listClassStudents(id, tenant.id, status, { role: req.tenantRole!, id: user.id })
       reply.send({ students })
+    },
+  )
+
+  app.post(
+    '/tenant/classes/:id/students',
+    {
+      schema: {
+        tags: ['Classes'],
+        summary: 'Add students to a class',
+        description: 'Owner-only. Enrols students picked from the coaching\'s own roster — the primary way a batch is filled. Each id must already be a `student` member of this coaching; this never creates a membership. Enrolment is `approved` regardless of `autoApprove`, and a pending or rejected row for the same student is promoted. Students already approved are returned in `alreadyEnrolled` instead of failing the call.',
+        security: AUTH,
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+        body: {
+          type: 'object',
+          required: ['studentIds'],
+          properties: {
+            studentIds: { type: 'array', minItems: 1, items: { type: 'string', format: 'uuid' } },
+          },
+        },
+      },
+      preHandler: OWNER_ONLY,
+    },
+    async (req, reply) => {
+      const parsed = addStudentsSchema.safeParse(req.body)
+      if (!parsed.success) throw Errors.VALIDATION(parsed.error.errors[0].message)
+
+      const { id } = req.params as { id: string }
+      const tenant = req.tenant!
+      const result = await addStudentsToClass(id, tenant.id, parsed.data.studentIds)
+      reply.send(result)
     },
   )
 

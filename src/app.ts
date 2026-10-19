@@ -17,6 +17,7 @@ import { reportRoutes } from './modules/report/report.routes.js'
 import { feeRoutes } from './modules/fee/fee.routes.js'
 import { examReviewRoutes } from './modules/exam-review/exam-review.routes.js'
 import { platformRoutes } from './modules/platform/platform.routes.js'
+import { peopleRoutes } from './modules/people/people.routes.js'
 import { registerBullBoard } from './config/bull-board.js'
 import { registerApiDocs } from './config/docs.js'
 import cors from '@fastify/cors'
@@ -187,6 +188,7 @@ export async function buildApp() {
   await app.register(feeRoutes)
   await app.register(examReviewRoutes)
   await app.register(platformRoutes)
+  await app.register(peopleRoutes)
 
   return app
 }

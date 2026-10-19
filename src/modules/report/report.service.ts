@@ -329,6 +329,62 @@ export async function listReportsForStudent(studentId: string): Promise<ReportSu
 }
 
 /**
+ * Every report a student has in ONE coaching — the tenant-scoped sibling of
+ * `listReportsForStudent`.
+ *
+ * It exists because that function is deliberately **not** tenant-filtered: it
+ * backs `GET /reports`, where the student is reading their own results across
+ * every coaching they belong to plus the public marketplace, and a tenant
+ * filter there would hide results they are entitled to. Passing a `studentId`
+ * to it from a staff-facing screen would therefore show a coaching owner that
+ * student's results from a RIVAL coaching. Hence two functions with two scopes
+ * rather than one with an optional argument that a caller can forget.
+ *
+ * `authoredBy` narrows to papers one teacher wrote, which is the teacher's view
+ * of a student: they may see how the student did on their own paper and not on
+ * a colleague's.
+ *
+ * No publication filter. `listReportsForStudent` hides unpublished private
+ * results because the STUDENT must not see a mark before the owner releases it;
+ * staff are the ones doing the releasing, so the same filter here would blank
+ * out the screen they use to decide. Callers are owner/teacher-gated.
+ */
+export async function listReportsForStudentInTenant(
+  studentId: string,
+  tenantId: string,
+  opts: { authoredBy?: string } = {},
+): Promise<TeacherReportSummary[]> {
+  const conditions = [
+    eq(reports.studentId, studentId),
+    eq(reports.tenantId, tenantId),
+  ]
+  if (opts.authoredBy) conditions.push(eq(exams.createdBy, opts.authoredBy))
+
+  return db
+    .select({
+      id: reports.id,
+      sessionId: reports.sessionId,
+      examId: reports.examId,
+      examTitle: exams.title,
+      studentId: reports.studentId,
+      studentName: users.name,
+      studentEmail: users.email,
+      totalScore: reports.totalScore,
+      maxScore: reports.maxScore,
+      autoScore: reports.autoScore,
+      aiScore: reports.aiScore,
+      status: reports.status,
+      publishedAt: reports.publishedAt,
+      createdAt: reports.createdAt,
+    })
+    .from(reports)
+    .innerJoin(exams, eq(exams.id, reports.examId))
+    .innerJoin(users, eq(users.id, reports.studentId))
+    .where(and(...conditions))
+    .orderBy(desc(reports.createdAt)) as Promise<TeacherReportSummary[]>
+}
+
+/**
  * Teachers read only their own papers; owners read every paper in the tenant.
  *
  * Shared by both exam-scoped reads below rather than copied into each. A guard

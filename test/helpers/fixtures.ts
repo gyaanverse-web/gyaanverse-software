@@ -237,6 +237,10 @@ export async function createTestSession(overrides: {
   autoScore?: number | null
   manualScore?: number | null
   status?: 'in_progress' | 'submitted' | 'evaluated'
+  // Second and later sits at the same paper. Defaults to 1, so a test that
+  // wants two attempts must number the second one — `exam_sessions_attempt_uniq`
+  // is on (exam, student, attempt) and would otherwise reject it.
+  attemptNumber?: number
 }) {
   const [s] = await db
     .insert(examSessions)
@@ -244,6 +248,7 @@ export async function createTestSession(overrides: {
       examId: overrides.examId,
       studentId: overrides.studentId,
       tenantId: overrides.tenantId,
+      attemptNumber: overrides.attemptNumber ?? 1,
       totalMarks: overrides.totalMarks ?? 100,
       autoScore: overrides.autoScore ?? null,
       manualScore: overrides.manualScore ?? null,
