@@ -420,6 +420,67 @@ describe('CRITICAL: A-user on A, B-resource id in the URL', () => {
   })
 })
 
+describe('CRITICAL: people profiles over HTTP', () => {
+  it("B's student and teacher both 404 through A's prefix", async () => {
+    const a = await seedTenantWithUsers()
+    const b = await seedTenantWithUsers()
+    const as = await signIn(a.owner.id)
+    const slug = a.tenant.slug
+
+    expect((await call('GET', `/tenant/people/students/${b.student.id}`, { as, slug })).statusCode).toBe(404)
+    expect((await call('GET', `/tenant/people/teachers/${b.teacher.id}`, { as, slug })).statusCode).toBe(404)
+  })
+
+  it('a teacher sharing no batch gets 404, not 403', async () => {
+    const a = await seedTenantWithUsers()
+
+    const res = await call('GET', `/tenant/people/students/${a.student.id}`, {
+      as: await signIn(a.teacher.id),
+      slug: a.tenant.slug,
+    })
+    // 403 would confirm this student is enrolled at this coaching, which is a
+    // roster leak to a teacher who does not teach them.
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('teacher detail is owner-only — a teacher gets 403 from the guard', async () => {
+    const a = await seedTenantWithUsers()
+    const other = await createTestUser()
+    await createMembership({ userId: other.id, tenantId: a.tenant.id, role: 'teacher' })
+
+    // 403 here, not 404: `requireTenantRole('coaching_owner')` rejects on ROLE
+    // before any id is read, so no id is being probed and nothing leaks.
+    const res = await call('GET', `/tenant/people/teachers/${other.id}`, {
+      as: await signIn(a.teacher.id),
+      slug: a.tenant.slug,
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('a student cannot read the people surface at all', async () => {
+    const a = await seedTenantWithUsers()
+    const as = await signIn(a.student.id)
+    const slug = a.tenant.slug
+
+    expect((await call('GET', '/tenant/people/students', { as, slug })).statusCode).toBe(403)
+    expect((await call('GET', `/tenant/people/students/${a.student.id}`, { as, slug })).statusCode).toBe(403)
+  })
+
+  it("the students list on A never contains B's students", async () => {
+    const a = await seedTenantWithUsers()
+    const b = await seedTenantWithUsers()
+
+    const res = await call('GET', '/tenant/people/students', {
+      as: await signIn(a.owner.id),
+      slug: a.tenant.slug,
+    })
+    expect(res.statusCode).toBe(200)
+    const ids = res.json().students.map((x: { id: string }) => x.id)
+    expect(ids).toContain(a.student.id)
+    expect(ids).not.toContain(b.student.id)
+  })
+})
+
 describe('CRITICAL: tenant-free student routes are owner-keyed', () => {
   it("A-student cannot read B-student's session", async () => {
     const a = await seedTenantWithUsers()

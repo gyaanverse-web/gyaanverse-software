@@ -18,6 +18,7 @@ export {
   reverseConcession,
   getStudentLedger,
   getFeesSummary,
+  getOutstandingByStudent,
   listInvoicesForStudent,
   listGuardians,
   addGuardian,

@@ -1,4 +1,4 @@
-import { eq, and, inArray, sql } from 'drizzle-orm'
+import { eq, and, inArray, ne, sql } from 'drizzle-orm'
 import { db } from '../../shared/db.js'
 import { AppError, Errors } from '../../shared/errors.js'
 import { tenants } from './tenant.schema.js'
@@ -271,13 +271,21 @@ export async function listTeachersWithWorkload(tenantId: string) {
     .where(and(eq(classTeachers.tenantId, tenantId), inArray(classTeachers.teacherId, teacherIds)))
     .groupBy(classTeachers.teacherId)
 
+  // `draft` is excluded deliberately. Under the hard role split the owner never
+  // sees a teacher's unfinished paper — and a COUNT that includes it still tells
+  // them one exists, which is the same leak in a smaller box. This column used
+  // to count every status.
   const examAgg = await db
     .select({
       createdBy: exams.createdBy,
       examCount: sql<number>`count(*)`.mapWith(Number),
     })
     .from(exams)
-    .where(and(eq(exams.tenantId, tenantId), inArray(exams.createdBy, teacherIds)))
+    .where(and(
+      eq(exams.tenantId, tenantId),
+      inArray(exams.createdBy, teacherIds),
+      ne(exams.status, 'draft'),
+    ))
     .groupBy(exams.createdBy)
 
   const classByTeacher = new Map(classAgg.map((c) => [c.teacherId, c]))

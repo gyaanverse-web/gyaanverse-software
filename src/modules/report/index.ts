@@ -3,6 +3,7 @@ export {
   getReportForStudent,
   getReportForTenant,
   listReportsForStudent,
+  listReportsForStudentInTenant,
   listReportsForExam,
   listSessionsAwaitingReport,
 } from './report.service.js'
