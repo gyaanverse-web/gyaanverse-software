@@ -10,6 +10,7 @@ import {
   getClassesForTeacher,
   getClassForViewer,
   listClassStudents,
+  addStudentsToClass,
   deleteClass,
   useClassJoinCode,
   generateClassJoinCode,
@@ -225,6 +226,110 @@ describe('assignment cleanup', () => {
     const cls = await createTestClass({ tenantId: tenant.id, teacherId: teacher.id })
     await deleteClass(cls.id, tenant.id)
     expect(await assignedIds(cls.id)).toEqual([])
+  })
+})
+
+describe('addStudentsToClass', () => {
+  // A second student member of the given coaching.
+  async function addStudentMember(tenantId: string) {
+    const s = await createTestUser()
+    await createMembership({ userId: s.id, tenantId, role: 'student' })
+    return s
+  }
+
+  async function rosterOf(classId: string, tenantId: string, ownerId: string) {
+    const rows = await listClassStudents(classId, tenantId, undefined, { role: 'coaching_owner', id: ownerId })
+    return rows.map((r) => ({ studentId: r.studentId, status: r.status }))
+  }
+
+  it('enrols the picked students as approved', async () => {
+    const { tenant, owner, student } = await seedTenantWithUsers()
+    const student2 = await addStudentMember(tenant.id)
+    const cls = await createTestClass({ tenantId: tenant.id })
+
+    const res = await addStudentsToClass(cls.id, tenant.id, [student.id, student2.id])
+    expect(res.added.sort()).toEqual([student.id, student2.id].sort())
+    expect(res.alreadyEnrolled).toEqual([])
+    expect((await rosterOf(cls.id, tenant.id, owner.id)).every((r) => r.status === 'approved')).toBe(true)
+  })
+
+  it('approves regardless of autoApprove — the owner picking the name is the vetting', async () => {
+    const { tenant, owner, student } = await seedTenantWithUsers()
+    const cls = await createTestClass({ tenantId: tenant.id, autoApprove: false })
+
+    await addStudentsToClass(cls.id, tenant.id, [student.id])
+    expect(await rosterOf(cls.id, tenant.id, owner.id)).toEqual([{ studentId: student.id, status: 'approved' }])
+  })
+
+  it('promotes a pending or rejected row instead of failing on the unique index', async () => {
+    const { tenant, owner, student } = await seedTenantWithUsers()
+    const rejected = await addStudentMember(tenant.id)
+    const cls = await createTestClass({ tenantId: tenant.id })
+    await enrollStudent({ classId: cls.id, studentId: student.id, status: 'pending' })
+    await enrollStudent({ classId: cls.id, studentId: rejected.id, status: 'rejected' })
+
+    const res = await addStudentsToClass(cls.id, tenant.id, [student.id, rejected.id])
+    expect(res.added.sort()).toEqual([student.id, rejected.id].sort())
+    expect((await rosterOf(cls.id, tenant.id, owner.id)).every((r) => r.status === 'approved')).toBe(true)
+  })
+
+  it('reports already-approved students without discarding the rest', async () => {
+    const { tenant, student } = await seedTenantWithUsers()
+    const student2 = await addStudentMember(tenant.id)
+    const cls = await createTestClass({ tenantId: tenant.id })
+    await enrollStudent({ classId: cls.id, studentId: student.id, status: 'approved' })
+
+    const res = await addStudentsToClass(cls.id, tenant.id, [student.id, student2.id])
+    expect(res.added).toEqual([student2.id])
+    expect(res.alreadyEnrolled).toEqual([student.id])
+  })
+
+  it('rejects a user who is not a student of this coaching, and enrols nobody', async () => {
+    const { tenant, owner, teacher, student } = await seedTenantWithUsers()
+    const outsider = await createTestUser()
+    const cls = await createTestClass({ tenantId: tenant.id })
+
+    for (const bad of [teacher.id, outsider.id]) {
+      await expect(addStudentsToClass(cls.id, tenant.id, [student.id, bad]))
+        .rejects.toMatchObject({ code: 'INVALID_STUDENT', statusCode: 400 })
+    }
+    expect(await rosterOf(cls.id, tenant.id, owner.id)).toEqual([])
+  })
+
+  it('404s for a class in another tenant', async () => {
+    const { tenant, student } = await seedTenantWithUsers()
+    const other = await seedTenantWithUsers()
+    const cls = await createTestClass({ tenantId: other.tenant.id })
+    await expect(addStudentsToClass(cls.id, tenant.id, [student.id])).rejects.toMatchObject({ statusCode: 404 })
+  })
+
+  it('notifies the added students, not the owner', async () => {
+    const { tenant, student } = await seedTenantWithUsers()
+    const cls = await createTestClass({ tenantId: tenant.id })
+
+    vi.mocked(dispatch).mockClear()
+    await addStudentsToClass(cls.id, tenant.id, [student.id])
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ recipients: { userIds: [student.id] } }))
+  })
+
+  it('sends nothing when every picked student is already enrolled', async () => {
+    const { tenant, student } = await seedTenantWithUsers()
+    const cls = await createTestClass({ tenantId: tenant.id })
+    await enrollStudent({ classId: cls.id, studentId: student.id, status: 'approved' })
+
+    vi.mocked(dispatch).mockClear()
+    const res = await addStudentsToClass(cls.id, tenant.id, [student.id])
+    expect(res.added).toEqual([])
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('de-duplicates repeated ids', async () => {
+    const { tenant, owner, student } = await seedTenantWithUsers()
+    const cls = await createTestClass({ tenantId: tenant.id })
+    const res = await addStudentsToClass(cls.id, tenant.id, [student.id, student.id])
+    expect(res.added).toEqual([student.id])
+    expect(await rosterOf(cls.id, tenant.id, owner.id)).toHaveLength(1)
   })
 })
 

@@ -636,6 +636,94 @@ export async function listClassStudents(
   }))
 }
 
+/**
+ * Enrol students the owner picked out of the coaching's own roster — the normal
+ * way a batch is filled. Join codes stay for the cases where the owner would
+ * rather let students come to them.
+ *
+ * Every id must already hold a `student` membership of this coaching; this
+ * never creates one, so nothing here can grow the tenant's student count past
+ * its plan limit.
+ *
+ * The status is always `approved`, whatever `autoApprove` says: that flag
+ * governs students who show up with a code and need vetting, and the owner
+ * picking a name off their own roster *is* the vetting. A `pending` or
+ * `rejected` row for the same student is promoted for the same reason (and
+ * because `class_members` is unique per class+student, so an insert would fail
+ * on it). Already-approved students are reported back in `alreadyEnrolled`
+ * rather than failing the call — the owner selecting one extra name should not
+ * discard the other nineteen.
+ */
+export async function addStudentsToClass(
+  classId: string,
+  tenantId: string,
+  studentIds: string[],
+) {
+  const cls = await getClass(classId, tenantId)
+  if (!cls) throw Errors.NOT_FOUND('Class')
+
+  const wanted = [...new Set(studentIds)]
+  if (wanted.length === 0) throw Errors.VALIDATION('Select at least one student')
+
+  const members = await db
+    .select({ userId: memberships.userId })
+    .from(memberships)
+    .where(
+      and(
+        eq(memberships.tenantId, tenantId),
+        eq(memberships.role, 'student'),
+        inArray(memberships.userId, wanted),
+      ),
+    )
+  if (members.length !== wanted.length) {
+    throw new AppError('INVALID_STUDENT', 'Every selected user must be a student in this coaching', 400)
+  }
+
+  const existing = await db
+    .select({ id: classMembers.id, studentId: classMembers.studentId, status: classMembers.status })
+    .from(classMembers)
+    .where(and(eq(classMembers.classId, classId), inArray(classMembers.studentId, wanted)))
+
+  const alreadyEnrolled = existing.filter((e) => e.status === 'approved').map((e) => e.studentId)
+  const promote = existing.filter((e) => e.status !== 'approved')
+  const seen = new Set(existing.map((e) => e.studentId))
+  const fresh = wanted.filter((id) => !seen.has(id))
+
+  if (fresh.length === 0 && promote.length === 0) {
+    return { success: true, added: [], alreadyEnrolled }
+  }
+
+  await db.transaction(async (tx) => {
+    if (promote.length > 0) {
+      await tx
+        .update(classMembers)
+        .set({ status: 'approved' })
+        .where(inArray(classMembers.id, promote.map((p) => p.id)))
+    }
+    if (fresh.length > 0) {
+      await tx
+        .insert(classMembers)
+        .values(fresh.map((studentId) => ({ classId, studentId, status: 'approved' })))
+    }
+  })
+
+  const added = [...fresh, ...promote.map((p) => p.studentId)]
+
+  // The students are told, not the owner — the owner just did this.
+  void dispatch({
+    type: 'class_update',
+    recipients: { userIds: added },
+    tenantId,
+    data: {
+      title: 'You were added to a batch',
+      body: `You have been enrolled in ${cls.name}.`,
+      link: `/student/batches/${cls.id}`,
+    },
+  })
+
+  return { success: true, added, alreadyEnrolled }
+}
+
 export async function updateEnrollmentStatus(
   classId: string,
   tenantId: string,

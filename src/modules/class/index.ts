@@ -16,6 +16,7 @@ export {
   previewClassJoinCode,
   useClassJoinCode,
   listClassStudents,
+  addStudentsToClass,
   updateEnrollmentStatus,
   removeStudentFromClass,
 } from './class.service.js'

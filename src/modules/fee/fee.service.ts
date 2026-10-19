@@ -822,6 +822,40 @@ export async function listInvoicesForStudent(tenantId: string, studentId: string
   }
 }
 
+/**
+ * Outstanding balance for many students in one query, for list screens.
+ *
+ * Lives in the fee module rather than in the caller so that "what does this
+ * student owe" has exactly one derivation: `outstandingOf` over the same
+ * non-cancelled, non-draft invoices `getFeesSummary` bills. A list page that
+ * computed its own SUM would eventually disagree with the student's own ledger,
+ * and the disagreement would show up as a defaulter who says they have paid.
+ *
+ * Returns a Map so a caller with 300 students does no per-row lookup; students
+ * with no invoices are simply absent (callers default them to 0).
+ */
+export async function getOutstandingByStudent(
+  tenantId: string,
+  studentIds: string[],
+): Promise<Map<string, Paise>> {
+  if (studentIds.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      studentId: feeInvoices.studentId,
+      outstanding: sql<number>`coalesce(sum(greatest(0, ${feeInvoices.totalAmount} - ${feeInvoices.paidAmount} - ${feeInvoices.waivedAmount})), 0)`.mapWith(Number),
+    })
+    .from(feeInvoices)
+    .where(and(
+      eq(feeInvoices.tenantId, tenantId),
+      inArray(feeInvoices.studentId, studentIds),
+      sql`${feeInvoices.status} not in ('cancelled', 'draft')`,
+    ))
+    .groupBy(feeInvoices.studentId)
+
+  return new Map(rows.map((r) => [r.studentId, r.outstanding]))
+}
+
 // ── Guardians ────────────────────────────────────────────────────────────────
 
 async function assertStudentMember(tenantId: string, studentId: string) {
