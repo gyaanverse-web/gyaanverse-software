@@ -1403,6 +1403,46 @@ export async function listAvailableExamsForStudent(studentId: string, tenantId: 
   }))
 }
 
+/**
+ * The exam columns a STUDENT or an anonymous visitor may see.
+ *
+ * `db.select()` with no projection returns the whole row, and on `exams` that
+ * means the owner's `reviewRemarks`, the teacher's raw `wizardState` draft and
+ * the generator's `generationParams` — authoring internals with no business
+ * leaving the staff views. Two of the four readers below are deliberately
+ * unauthenticated (`GET /exams/public`, `GET /exams/:id/preview`), so this list
+ * is the boundary: add a column here only if a candidate is entitled to it.
+ * Question rows are projected the same way at each call site, which is what
+ * keeps `answerKey` out of every student-facing response.
+ */
+const publicExamColumns = {
+  id: exams.id,
+  title: exams.title,
+  description: exams.description,
+  instructions: exams.instructions,
+  durationMins: exams.durationMins,
+  gradeLevel: exams.gradeLevel,
+  subjectId: exams.subjectId,
+  visibility: exams.visibility,
+  price: exams.price,
+  maxAttempts: exams.maxAttempts,
+  status: exams.status,
+  totalMarks: exams.totalMarks,
+  publishedAt: exams.publishedAt,
+  scheduledAt: exams.scheduledAt,
+  endsAt: exams.endsAt,
+}
+
+/**
+ * The same list plus `tenantId`, for the one reader that is already inside a
+ * tenant: `getExamForStudent`, serving `GET /tenant/exams/:id`. That route
+ * compares `exam.tenantId` against the resolved tenant before replying — the
+ * cross-tenant guard the multi-tenancy audit added as F-9 — so the column has
+ * to survive the projection there. It stays out of `publicExamColumns`
+ * because the marketplace readers are anonymous and need no tenant identity.
+ */
+const studentExamColumns = { ...publicExamColumns, tenantId: exams.tenantId }
+
 export async function listPublicExams(filters?: { gradeLevel?: string; subjectId?: string }) {
   const conditions = [
     eq(exams.status, 'live'),
@@ -1412,7 +1452,7 @@ export async function listPublicExams(filters?: { gradeLevel?: string; subjectId
   if (filters?.subjectId) conditions.push(eq(exams.subjectId, filters.subjectId))
 
   return db
-    .select()
+    .select(publicExamColumns)
     .from(exams)
     .where(and(...conditions))
     .orderBy(desc(exams.publishedAt))
@@ -1485,7 +1525,11 @@ export async function getExamStructure(
 }
 
 export async function getExamForStudent(id: string, studentId: string, lang?: string) {
-  const [exam] = await db.select().from(exams).where(eq(exams.id, id)).limit(1)
+  const [exam] = await db
+    .select(studentExamColumns)
+    .from(exams)
+    .where(eq(exams.id, id))
+    .limit(1)
   if (!exam) throw Errors.NOT_FOUND('Exam')
   if (!STUDENT_VISIBLE_STATUSES.has(exam.status as ExamStatus))
     throw new AppError('VALIDATION', 'This exam is not available', 422)
@@ -1572,7 +1616,7 @@ export async function canStudentAccess(studentId: string, examId: string): Promi
 
 export async function getPublicExamPreview(id: string) {
   const [exam] = await db
-    .select()
+    .select(publicExamColumns)
     .from(exams)
     .where(and(eq(exams.id, id), inArray(exams.visibility, ['public_free', 'public_paid'])))
     .limit(1)
@@ -1584,7 +1628,7 @@ export async function getPublicExamPreview(id: string) {
 
 export async function getPublicExamForStudent(id: string, studentId: string, lang?: string) {
   const [exam] = await db
-    .select()
+    .select(publicExamColumns)
     .from(exams)
     .where(and(eq(exams.id, id), inArray(exams.visibility, ['public_free', 'public_paid'])))
     .limit(1)
